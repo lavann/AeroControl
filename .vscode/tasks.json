@@ -1,0 +1,120 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build AeroControl",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"AeroControl.sln",
+				"--nologo"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "verify AeroControl formatting",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"format",
+				"AeroControl.sln",
+				"--verify-no-changes",
+				"--no-restore"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "test"
+		},
+		{
+			"label": "build AeroControl release",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"AeroControl.sln",
+				"--configuration",
+				"Release",
+				"--nologo"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "test AeroControl release",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"AeroControl.sln",
+				"--configuration",
+				"Release",
+				"--no-build",
+				"--nologo"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "test"
+		},
+		{
+			"label": "publish AeroControl win-x64",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"publish",
+				"src/AeroControl/AeroControl.csproj",
+				"--configuration",
+				"Release",
+				"--runtime",
+				"win-x64",
+				"--self-contained",
+				"false",
+				"-p:PublishSingleFile=true",
+				"-p:DebugType=None",
+				"--output",
+				"artifacts/win-x64"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "smoke AeroControl published demo",
+			"type": "shell",
+			"command": "${workspaceFolder}/artifacts/win-x64/AeroControl.exe",
+			"args": [
+				"--demo",
+				"--capture",
+				"artifacts/smoke/demo.png"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "smoke AeroControl live provider",
+			"type": "shell",
+			"command": "${workspaceFolder}/artifacts/win-x64/AeroControl.exe",
+			"args": [
+				"--capture",
+				"artifacts/smoke/live-unprivileged.png"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		}
+	]
+}

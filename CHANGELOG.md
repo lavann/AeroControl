@@ -1,0 +1,28 @@
+# Changelog
+
+All notable changes to AeroControl are documented here.
+
+The project follows semantic versioning after the initial public preview.
+
+## [Unreleased]
+
+### Planned
+
+- Community compatibility reports
+- Additional model-validated device controls
+
+## [0.1.0] - 2026-07-16
+
+### Added
+
+- .NET 8 WPF cooling dashboard
+- Gigabyte WMI capability discovery
+- CPU/GPU temperature and dual-fan telemetry
+- Automatic and fixed 30-100% fan control
+- Verified 70%, 80%, and 100% presets for AERO 15-SA
+- Automatic-mode restoration on exit
+- Administrator restart flow
+- Versioned hardware-risk acknowledgement
+- Demo provider and deterministic screenshot capture
+- Unit-tested WMI abstraction with no hardware writes in tests
+- MIT license and hardware-specific disclaimer

@@ -1,0 +1,52 @@
+name: Bug report
+description: Report an AeroControl defect on an already supported path
+title: "[bug] "
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: AeroControl version or commit
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Laptop model and BIOS
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start AeroControl...
+        2. Select...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      description: Remove serial numbers, UUIDs, usernames, and unrelated system details.
+      render: text
+  - type: checkboxes
+    id: conflicts
+    attributes:
+      label: Conflicting software
+      options:
+        - label: Gigabyte Control Center and other fan-control tools were closed during reproduction.
+          required: true

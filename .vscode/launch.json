@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "AeroControl (live hardware)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build AeroControl",
+      "program": "${workspaceFolder}/src/AeroControl/bin/Debug/net8.0-windows10.0.17763.0/AeroControl.exe",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "justMyCode": true
+    },
+    {
+      "name": "AeroControl (demo)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build AeroControl",
+      "program": "${workspaceFolder}/src/AeroControl/bin/Debug/net8.0-windows10.0.17763.0/AeroControl.exe",
+      "args": ["--demo"],
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "justMyCode": true
+    }
+  ]
+}

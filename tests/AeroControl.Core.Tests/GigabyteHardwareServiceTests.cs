@@ -38,6 +38,84 @@ public sealed class GigabyteHardwareServiceTests
     }
 
     [Fact]
+    public async Task GetSnapshot_DecodesReportedRawScreenshotValues()
+    {
+        var bridge = new FakeWmiBridge();
+        bridge.Readings["getRpm1"] = 34828;
+        bridge.Readings["getRpm2"] = 13580;
+        var service = new GigabyteHardwareService(bridge);
+
+        var snapshot = await service.GetSnapshotAsync();
+
+        Assert.Equal(3208, snapshot.Fan1Rpm);
+        Assert.Equal(3125, snapshot.Fan2Rpm);
+        Assert.True(snapshot.FanHealthGood);
+    }
+
+    [Fact]
+    public async Task GetSnapshot_IgnoresBrokenOptionalCpuDutyGetter()
+    {
+        var bridge = new FakeWmiBridge
+        {
+            FailOnReadMethod = "GetCPUFanDuty"
+        };
+        var service = new GigabyteHardwareService(bridge);
+
+        var snapshot = await service.GetSnapshotAsync();
+
+        Assert.True(snapshot.IsConnected);
+        Assert.Equal(80, snapshot.CpuFanDutyPercent);
+        Assert.Equal(4637, snapshot.Fan1Rpm);
+        Assert.Equal(4597, snapshot.Fan2Rpm);
+        Assert.Null(snapshot.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task SetFixedFanPercent_DoesNotRequireBrokenCpuDutyGetter()
+    {
+        var bridge = new FakeWmiBridge();
+        bridge.GetMethods.Remove("GetCPUFanDuty");
+        var service = new GigabyteHardwareService(bridge);
+
+        var result = await service.SetFixedFanPercentAsync(90);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(90, result.ReportedPercent);
+        Assert.True(result.RequiresAutomaticRestore);
+    }
+
+    [Fact]
+    public async Task GetSnapshot_RejectsImplausibleDecodedRpm()
+    {
+        var bridge = new FakeWmiBridge();
+        bridge.Readings["getRpm1"] = ushort.MaxValue;
+        var service = new GigabyteHardwareService(bridge);
+
+        var snapshot = await service.GetSnapshotAsync();
+
+        Assert.Null(snapshot.Fan1Rpm);
+        Assert.Null(snapshot.FanHealthGood);
+        Assert.Contains("Fan 1", snapshot.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetSnapshot_ReportsMalformedRequiredRpmData()
+    {
+        var bridge = new FakeWmiBridge
+        {
+            ReturnInvalidDataMethod = "getRpm1"
+        };
+        var service = new GigabyteHardwareService(bridge);
+
+        var snapshot = await service.GetSnapshotAsync();
+
+        Assert.Null(snapshot.Fan1Rpm);
+        Assert.Null(snapshot.FanHealthGood);
+        Assert.Contains("getRpm1", snapshot.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("numeric", snapshot.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task SetFixedFanPercent_AppliesVerifiedSequenceToBothFans()
     {
         var bridge = new FakeWmiBridge();
@@ -114,6 +192,54 @@ public sealed class GigabyteHardwareServiceTests
         Assert.False(result.Succeeded);
         Assert.Contains("readback", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(bridge.Writes);
+    }
+
+    [Fact]
+    public async Task SetFixedFanPercent_RequiresFixedSpeedReadbackBeforeMutation()
+    {
+        var bridge = new FakeWmiBridge();
+        bridge.GetMethods.Remove("GetFixedFanSpeed");
+        var service = new GigabyteHardwareService(bridge);
+
+        var result = await service.SetFixedFanPercentAsync(80);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("readback", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(bridge.Writes);
+    }
+
+    [Fact]
+    public async Task SetFixedFanPercent_RollsBackWhenFixedSpeedReadbackThrows()
+    {
+        var bridge = new FakeWmiBridge
+        {
+            FailOnReadMethod = "GetFixedFanSpeed"
+        };
+        var service = new GigabyteHardwareService(bridge);
+
+        var result = await service.SetFixedFanPercentAsync(100);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.RequiresAutomaticRestore);
+        Assert.Equal(1, bridge.Readings["GetAutoFanStatus"]);
+        Assert.Equal(0, bridge.Readings["GetFixedFanStatus"]);
+    }
+
+    [Fact]
+    public async Task SetFixedFanPercent_RollsBackWhenFixedSpeedReadbackIsStale()
+    {
+        var bridge = new FakeWmiBridge
+        {
+            IgnoreWriteMethod = "SetFixedFanSpeed"
+        };
+        var service = new GigabyteHardwareService(bridge);
+
+        var result = await service.SetFixedFanPercentAsync(100);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("readback mismatch", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.RequiresAutomaticRestore);
+        Assert.Equal(1, bridge.Readings["GetAutoFanStatus"]);
     }
 
     [Theory]

@@ -102,19 +102,23 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
             var errors = new List<string>();
             var cpuTemperature = TryRead(capabilities, "getCpuTemp", errors);
             var gpuTemperature = TryRead(capabilities, "getGpuTemp1", errors);
-            var fan1Rpm = TryRead(capabilities, "getRpm1", errors);
-            var fan2Rpm = TryRead(capabilities, "getRpm2", errors);
-            var cpuDutyRaw = TryRead(capabilities, "GetCPUFanDuty", errors);
-            var gpuDutyRaw = TryRead(capabilities, "GetGPUFanDuty", errors);
-            var fixedDutyRaw = TryRead(capabilities, "GetFixedFanSpeed", errors);
-            var automaticStatus = TryRead(capabilities, "GetAutoFanStatus", errors);
-            var fixedStatus = TryRead(capabilities, "GetFixedFanStatus", errors);
+            var fan1RpmRaw = TryRead(capabilities, "getRpm1", errors);
+            var fan2RpmRaw = TryRead(capabilities, "getRpm2", errors);
+            var fan1Rpm = DecodeRpm("Fan 1", fan1RpmRaw, errors);
+            var fan2Rpm = DecodeRpm("Fan 2", fan2RpmRaw, errors);
+            var cpuDutyRaw = TryRead(capabilities, "GetCPUFanDuty");
+            var gpuDutyRaw = TryRead(capabilities, "GetGPUFanDuty");
+            var fixedDutyRaw = TryRead(capabilities, "GetFixedFanSpeed");
+            var automaticStatus = TryRead(capabilities, "GetAutoFanStatus");
+            var fixedStatus = TryRead(capabilities, "GetFixedFanStatus");
 
             var mode = fixedStatus is > 0
                 ? FanControlMode.Fixed
                 : automaticStatus is > 0
                     ? FanControlMode.Automatic
                     : FanControlMode.Unknown;
+            var cpuDutyPercent = DecodeDuty(cpuDutyRaw) ??
+                (mode == FanControlMode.Fixed ? DecodeDuty(fixedDutyRaw) : null);
 
             var readingsAvailable = new int?[]
             {
@@ -134,7 +138,7 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
                 gpuTemperature,
                 fan1Rpm,
                 fan2Rpm,
-                DecodeDuty(cpuDutyRaw),
+                cpuDutyPercent,
                 DecodeDuty(gpuDutyRaw),
                 health,
                 mode,
@@ -287,15 +291,14 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         var stepStatus = ReadRequired(capabilities, "GetStepFanStatus");
         var automaticStatus = ReadRequired(capabilities, "GetAutoFanStatus");
         var fixedDuty = ReadRequired(capabilities, "GetFixedFanSpeed");
-        var cpuDuty = ReadRequired(capabilities, "GetCPUFanDuty");
         var gpuDuty = ReadRequired(capabilities, "GetGPUFanDuty");
 
         if (fixedStatus <= 0 || stepStatus <= 0 || automaticStatus != 0 ||
-            fixedDuty != duty || cpuDuty != duty || gpuDuty != duty)
+            fixedDuty != duty || gpuDuty != duty)
         {
             throw new InvalidOperationException(
                 $"Fan readback mismatch (fixed={fixedStatus}, step={stepStatus}, auto={automaticStatus}, " +
-                $"fixedDuty={fixedDuty}, cpuDuty={cpuDuty}, gpuDuty={gpuDuty}, expected={duty}).");
+                $"fixedDuty={fixedDuty}, gpuDuty={gpuDuty}, expected={duty}).");
         }
     }
 
@@ -325,7 +328,7 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
     private int? TryRead(
         HardwareCapabilities capabilities,
         string methodName,
-        List<string> errors)
+        List<string>? errors = null)
     {
         if (!capabilities.CanGet(methodName))
         {
@@ -334,13 +337,33 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
 
         try
         {
-            return _wmi.Invoke(FirmwareNamespace, GetClass, methodName).GetInt32("Data");
+            var value = _wmi.Invoke(FirmwareNamespace, GetClass, methodName).GetInt32("Data");
+            if (!value.HasValue)
+            {
+                errors?.Add($"{methodName}: returned no numeric Data value.");
+            }
+
+            return value;
         }
         catch (Exception exception)
         {
-            errors.Add($"{methodName}: {exception.Message}");
+            errors?.Add($"{methodName}: {exception.Message}");
             return null;
         }
+    }
+
+    private static int? DecodeRpm(
+        string fanName,
+        int? packedValue,
+        List<string> errors)
+    {
+        var rpm = FanRpmCodec.Decode(packedValue);
+        if (packedValue.HasValue && !rpm.HasValue)
+        {
+            errors.Add($"{fanName} returned an implausible packed RPM value.");
+        }
+
+        return rpm;
     }
 
     private void InvokeSet(

@@ -33,8 +33,8 @@ internal sealed class FakeWmiBridge : IWmiBridge
     {
         ["getCpuTemp"] = 70,
         ["getGpuTemp1"] = 61,
-        ["getRpm1"] = 4637,
-        ["getRpm2"] = 4597,
+        ["getRpm1"] = 7442,
+        ["getRpm2"] = 62737,
         ["GetCPUFanDuty"] = 183,
         ["GetGPUFanDuty"] = 183,
         ["GetFixedFanSpeed"] = 183,
@@ -56,6 +56,10 @@ internal sealed class FakeWmiBridge : IWmiBridge
     public string? FailOnceOnWriteMethod { get; set; }
 
     public string? IgnoreWriteMethod { get; set; }
+
+    public string? FailOnReadMethod { get; set; }
+
+    public string? ReturnInvalidDataMethod { get; set; }
 
     public bool FailMethodDiscovery { get; set; }
 
@@ -79,6 +83,19 @@ internal sealed class FakeWmiBridge : IWmiBridge
     {
         if (className.EndsWith("_Get", StringComparison.OrdinalIgnoreCase))
         {
+            if (string.Equals(ReturnInvalidDataMethod, methodName, StringComparison.OrdinalIgnoreCase))
+            {
+                return new WmiCallResult(new Dictionary<string, object?>
+                {
+                    ["Data"] = "invalid"
+                });
+            }
+
+            if (string.Equals(FailOnReadMethod, methodName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Invalid object");
+            }
+
             if (!Readings.TryGetValue(methodName, out var reading))
             {
                 throw new InvalidOperationException($"No fake reading for {methodName}.");

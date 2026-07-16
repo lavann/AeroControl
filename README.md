@@ -20,7 +20,7 @@ Currently implemented:
 
 - CPU and GPU temperature monitoring
 - Independent Fan 1 and Fan 2 RPM monitoring
-- CPU and GPU fan-duty monitoring
+- Fixed system-fan duty and GPU fan-duty monitoring when supported by firmware
 - Fan health and automatic/fixed mode reporting
 - Automatic, 70%, 80%, 100%, and custom 30-100% fan control
 - Automatic firmware-mode restoration on exit

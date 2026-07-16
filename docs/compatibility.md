@@ -24,14 +24,25 @@ Verified fan-duty mapping:
 
 RPM is not linear with electrical duty and varies with hardware, voltage, temperature, dust, bearing wear, and firmware. The observed values are evidence that the commands took effect on one machine, not target RPM guarantees.
 
-## Required fan methods
+The `getRpm1` and `getRpm2` methods return a byte-packed `UInt16`, not a literal RPM value. AeroControl decodes it using the same byte order as the vendor utility:
 
-Read path:
+```text
+rpm = ((raw & 0xFF) << 8) | ((raw >> 8) & 0xFF)
+```
+
+For example, raw values `34828` and `13580` decode to `3208 RPM` and `3125 RPM`. Version 0.1.0 displayed the raw values; this is fixed in 0.1.1.
+
+## Fan methods
+
+Minimum telemetry:
 
 - `getCpuTemp`
-- `getGpuTemp1`
 - `getRpm1`
 - `getRpm2`
+
+Optional telemetry:
+
+- `getGpuTemp1`
 - `GetCPUFanDuty`
 - `GetGPUFanDuty`
 - `GetAutoFanStatus`
@@ -39,7 +50,17 @@ Read path:
 - `GetFixedFanStatus`
 - `GetFixedFanSpeed`
 
-Write path:
+`GetCPUFanDuty` is advertised by the verified firmware but returns `Invalid object`. AeroControl ignores that optional failure and uses `GetFixedFanSpeed` as the system-fan duty readback while fixed mode is active.
+
+Mandatory readback before fan writes:
+
+- `GetGPUFanDuty`
+- `GetAutoFanStatus`
+- `GetStepFanStatus`
+- `GetFixedFanStatus`
+- `GetFixedFanSpeed`
+
+Mandatory write path:
 
 - `SetAutoFanStatus`
 - `SetStepFanStatus`
@@ -47,7 +68,7 @@ Write path:
 - `SetFixedFanSpeed`
 - `SetGPUFanDuty`
 
-AeroControl refuses fan writes when the required write methods are absent.
+AeroControl refuses fan writes when any mandatory write or readback method is absent.
 
 ## Read-only capability collection
 

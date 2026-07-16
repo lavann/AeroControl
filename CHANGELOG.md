@@ -11,6 +11,16 @@ The project follows semantic versioning after the initial public preview.
 - Community compatibility reports
 - Additional model-validated device controls
 
+## [0.1.1] - 2026-07-16
+
+### Fixed
+
+- Decode `getRpm1` and `getRpm2` as Gigabyte's byte-packed `UInt16` format instead of displaying the raw value
+- Reject implausible decoded fan speeds above 10,000 RPM
+- Treat the verified configuration's broken `GetCPUFanDuty` getter as optional
+- Use `GetFixedFanSpeed` as the CPU/system duty fallback while fixed mode is active
+- Stop surfacing optional CPU-duty getter failures as dashboard errors
+
 ## [0.1.0] - 2026-07-16
 
 ### Added

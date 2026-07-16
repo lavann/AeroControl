@@ -98,7 +98,7 @@ The core library owns models, duty encoding, capability checks, and firmware seq
 - Firmware writes are allowlisted to the exact verified configuration, not enabled by method-name detection alone.
 - Fixed duty is constrained to the vendor UI's observed 30-100% range.
 - Fan presets use the verified raw mapping: 70% = 160, 80% = 183, 100% = 229.
-- System and GPU fan paths are updated in one serialized sequence, fully read back, and rolled back to verified automatic mode after any partial failure.
+- System and GPU fan setters run in one serialized sequence; mode state and fixed system duty are read back, and any detected partial failure rolls back to verified automatic mode. The verified firmware's GPU-duty getter is unusable, so a silent GPU setter no-op cannot be independently read back.
 - Automatic mode remains available and is restored on exit by default.
 - Unsupported methods are detected before a write is attempted.
 - Proprietary Gigabyte DLLs, drivers, firmware, and source are not part of this repository.

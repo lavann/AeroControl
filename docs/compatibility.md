@@ -50,11 +50,10 @@ Optional telemetry:
 - `GetFixedFanStatus`
 - `GetFixedFanSpeed`
 
-`GetCPUFanDuty` is advertised by the verified firmware but returns `Invalid object`. AeroControl ignores that optional failure and uses `GetFixedFanSpeed` as the system-fan duty readback while fixed mode is active.
+`GetCPUFanDuty` and `GetGPUFanDuty` are advertised by the verified firmware but can return `Invalid object`. AeroControl ignores those optional telemetry failures and uses `GetFixedFanSpeed` as the authoritative fixed-duty readback.
 
 Mandatory readback before fan writes:
 
-- `GetGPUFanDuty`
 - `GetAutoFanStatus`
 - `GetStepFanStatus`
 - `GetFixedFanStatus`
@@ -69,6 +68,8 @@ Mandatory write path:
 - `SetGPUFanDuty`
 
 AeroControl refuses fan writes when any mandatory write or readback method is absent.
+
+The fixed-mode sequence still calls both `SetFixedFanSpeed` and `SetGPUFanDuty`. It verifies automatic/step/fixed mode plus `GetFixedFanSpeed`; it does not call the broken optional fan-duty getters as a post-write gate.
 
 ## Read-only capability collection
 

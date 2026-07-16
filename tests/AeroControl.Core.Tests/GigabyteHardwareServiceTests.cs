@@ -85,6 +85,51 @@ public sealed class GigabyteHardwareServiceTests
     }
 
     [Fact]
+    public async Task SetFixedFanPercent_DoesNotInvokeBrokenGpuDutyGetter()
+    {
+        var bridge = new FakeWmiBridge
+        {
+            FailOnReadMethod = "GetGPUFanDuty"
+        };
+        var service = new GigabyteHardwareService(bridge);
+
+        var result = await service.SetFixedFanPercentAsync(100);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(100, result.ReportedPercent);
+        Assert.True(result.RequiresAutomaticRestore);
+    }
+
+    [Fact]
+    public async Task SetFixedFanPercent_DoesNotRequireGpuDutyGetterCapability()
+    {
+        var bridge = new FakeWmiBridge();
+        bridge.GetMethods.Remove("GetGPUFanDuty");
+        var service = new GigabyteHardwareService(bridge);
+
+        var result = await service.SetFixedFanPercentAsync(100);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(100, result.ReportedPercent);
+    }
+
+    [Fact]
+    public async Task GetSnapshot_IgnoresBrokenOptionalGpuDutyGetter()
+    {
+        var bridge = new FakeWmiBridge
+        {
+            FailOnReadMethod = "GetGPUFanDuty"
+        };
+        var service = new GigabyteHardwareService(bridge);
+
+        var snapshot = await service.GetSnapshotAsync();
+
+        Assert.True(snapshot.IsConnected);
+        Assert.Null(snapshot.GpuFanDutyPercent);
+        Assert.Null(snapshot.ErrorMessage);
+    }
+
+    [Fact]
     public async Task GetSnapshot_RejectsImplausibleDecodedRpm()
     {
         var bridge = new FakeWmiBridge();
@@ -181,13 +226,27 @@ public sealed class GigabyteHardwareServiceTests
     }
 
     [Fact]
-    public async Task SetFixedFanPercent_RequiresAllReadbackMethodsBeforeMutation()
+    public async Task SetFixedFanPercent_RequiresModeReadbackBeforeMutation()
     {
         var bridge = new FakeWmiBridge();
-        bridge.GetMethods.Remove("GetGPUFanDuty");
+        bridge.GetMethods.Remove("GetAutoFanStatus");
         var service = new GigabyteHardwareService(bridge);
 
         var result = await service.SetFixedFanPercentAsync(80);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("readback", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(bridge.Writes);
+    }
+
+    [Fact]
+    public async Task SetFixedFanPercent_RequiresGpuDutySetterBeforeMutation()
+    {
+        var bridge = new FakeWmiBridge();
+        bridge.SetMethods.Remove("SetGPUFanDuty");
+        var service = new GigabyteHardwareService(bridge);
+
+        var result = await service.SetFixedFanPercentAsync(100);
 
         Assert.False(result.Succeeded);
         Assert.Contains("readback", result.Message, StringComparison.OrdinalIgnoreCase);
@@ -220,6 +279,7 @@ public sealed class GigabyteHardwareServiceTests
         var result = await service.SetFixedFanPercentAsync(100);
 
         Assert.False(result.Succeeded);
+        Assert.Contains("GetFixedFanSpeed", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(result.RequiresAutomaticRestore);
         Assert.Equal(1, bridge.Readings["GetAutoFanStatus"]);
         Assert.Equal(0, bridge.Readings["GetFixedFanStatus"]);
@@ -273,18 +333,19 @@ public sealed class GigabyteHardwareServiceTests
     }
 
     [Fact]
-    public async Task SetFixedFanPercent_RollsBackWhenDutyReadbackDoesNotMatch()
+    public async Task SetFixedFanPercent_ReportsFailingSetterName()
     {
         var bridge = new FakeWmiBridge
         {
-            IgnoreWriteMethod = "SetGPUFanDuty"
+            FailOnceOnWriteMethod = "SetGPUFanDuty"
         };
         var service = new GigabyteHardwareService(bridge);
 
         var result = await service.SetFixedFanPercentAsync(100);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("readback mismatch", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SetGPUFanDuty", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Injected failure", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(result.RequiresAutomaticRestore);
         Assert.Equal(1, bridge.Readings["GetAutoFanStatus"]);
     }

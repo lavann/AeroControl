@@ -205,7 +205,7 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
                 _automaticRestoreRequired = true;
                 return new ControlResult(
                     true,
-                    $"Fixed fan duty set and verified at {percent}%.",
+                    $"Fixed fan mode set to {percent}%; mode and fixed-duty readback verified.",
                     percent,
                     percent,
                     true);
@@ -291,14 +291,13 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         var stepStatus = ReadRequired(capabilities, "GetStepFanStatus");
         var automaticStatus = ReadRequired(capabilities, "GetAutoFanStatus");
         var fixedDuty = ReadRequired(capabilities, "GetFixedFanSpeed");
-        var gpuDuty = ReadRequired(capabilities, "GetGPUFanDuty");
 
         if (fixedStatus <= 0 || stepStatus <= 0 || automaticStatus != 0 ||
-            fixedDuty != duty || gpuDuty != duty)
+            fixedDuty != duty)
         {
             throw new InvalidOperationException(
                 $"Fan readback mismatch (fixed={fixedStatus}, step={stepStatus}, auto={automaticStatus}, " +
-                $"fixedDuty={fixedDuty}, gpuDuty={gpuDuty}, expected={duty}).");
+                $"fixedDuty={fixedDuty}, expected={duty}).");
         }
     }
 
@@ -321,8 +320,20 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
             throw new InvalidOperationException($"Required readback method {methodName} is unavailable.");
         }
 
-        return _wmi.Invoke(FirmwareNamespace, GetClass, methodName).GetInt32("Data")
-            ?? throw new InvalidOperationException($"Required readback method {methodName} returned no data.");
+        try
+        {
+            return _wmi.Invoke(FirmwareNamespace, GetClass, methodName).GetInt32("Data")
+                ?? throw new InvalidOperationException($"Required readback method {methodName} returned no data.");
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            if (exception is UnauthorizedAccessException)
+            {
+                throw new UnauthorizedAccessException($"{methodName}: {exception.Message}", exception);
+            }
+
+            throw new InvalidOperationException($"{methodName}: {exception.Message}", exception);
+        }
     }
 
     private int? TryRead(
@@ -372,14 +383,26 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _wmi.Invoke(
-            FirmwareNamespace,
-            SetClass,
-            methodName,
-            new Dictionary<string, object?>
+        try
+        {
+            _wmi.Invoke(
+                FirmwareNamespace,
+                SetClass,
+                methodName,
+                new Dictionary<string, object?>
+                {
+                    ["Data"] = value
+                });
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            if (exception is UnauthorizedAccessException)
             {
-                ["Data"] = value
-            });
+                throw new UnauthorizedAccessException($"{methodName}: {exception.Message}", exception);
+            }
+
+            throw new InvalidOperationException($"{methodName}: {exception.Message}", exception);
+        }
     }
 
     private static int? DecodeDuty(int? rawDuty) => rawDuty is >= 0 and <= FanDutyCodec.MaximumRawDuty

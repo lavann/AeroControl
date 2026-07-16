@@ -3,7 +3,7 @@
     <Authors>lavann and AeroControl contributors</Authors>
     <Company>AeroControl contributors</Company>
     <Copyright>Copyright (c) 2026 AeroControl contributors</Copyright>
-    <VersionPrefix>0.1.1</VersionPrefix>
+    <VersionPrefix>0.1.2</VersionPrefix>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/lavann/AeroControl</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

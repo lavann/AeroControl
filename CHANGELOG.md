@@ -11,6 +11,15 @@ The project follows semantic versioning after the initial public preview.
 - Community compatibility reports
 - Additional model-validated device controls
 
+## [0.1.2] - 2026-07-16
+
+### Fixed
+
+- Stop requiring the broken optional `GetGPUFanDuty` getter after fixed fan commands
+- Verify fixed mode through automatic/step/fixed status and `GetFixedFanSpeed`, matching the working vendor/PowerShell sequence
+- Preserve the `SetGPUFanDuty` write while treating its getter as optional telemetry
+- Include the exact WMI method name in future getter/setter failure messages
+
 ## [0.1.1] - 2026-07-16
 
 ### Fixed

@@ -70,7 +70,6 @@ public sealed record HardwareCapabilities(
         GetMethods.Contains("getRpm2");
 
     public bool CanControlFans =>
-        GetMethods.Contains("GetGPUFanDuty") &&
         GetMethods.Contains("GetAutoFanStatus") &&
         GetMethods.Contains("GetStepFanStatus") &&
         GetMethods.Contains("GetFixedFanStatus") &&

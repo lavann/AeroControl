@@ -87,8 +87,8 @@ jobs:
             }
             return $count
           }
-          $cooling = [System.Drawing.Bitmap]::new((Resolve-Path artifacts/smoke/cooling.png))
-          $battery = [System.Drawing.Bitmap]::new((Resolve-Path artifacts/smoke/battery.png))
+          $cooling = [System.Drawing.Bitmap]::new((Resolve-Path artifacts/smoke/cooling.png).Path)
+          $battery = [System.Drawing.Bitmap]::new((Resolve-Path artifacts/smoke/battery.png).Path)
           try {
             if ((Get-AccentCount $cooling 20 136) -lt 100 -or (Get-AccentCount $cooling 136 252) -gt 10) {
               throw 'Cooling screenshot does not show the Cooling tab as selected.'

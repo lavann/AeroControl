@@ -1,14 +1,17 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using AeroControl.Core.Abstractions;
 using AeroControl.Core.Models;
 
 namespace AeroControl.ViewModels;
 
-public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
+public sealed class MainViewModel : INotifyPropertyChanged, IDisposable, IAsyncDisposable
 {
     private readonly IAeroHardwareService _hardware;
-    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly IBatteryService _battery;
+    private readonly SemaphoreSlim _coolingRefreshGate = new(1, 1);
+    private readonly SemaphoreSlim _batteryRefreshGate = new(1, 1);
     private string _deviceName = "Detecting hardware";
     private string _deviceDetails = "Firmware interface pending";
     private string _cpuTemperature = "-- C";
@@ -27,13 +30,31 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _canControlFans;
     private bool _disposed;
     private string _hardwareKey = string.Empty;
+    private string _batteryName = "Detecting battery";
+    private string _batteryCharge = "--%";
+    private string _batteryRetention = "--%";
+    private string _batteryState = "Unknown";
+    private string _batteryRemaining = "-- Wh";
+    private string _batteryFullCapacity = "-- Wh";
+    private string _batteryDesignCapacity = "-- Wh";
+    private string _batteryCycleCount = "--";
+    private string _batteryVoltage = "-- V";
+    private string _batteryPowerFlow = "-- W";
+    private string _batteryPowerSource = "Unknown";
+    private string _batteryConnectionState = "Checking Windows battery data";
+    private string _batteryStatusMessage = "Reading standard Windows battery telemetry...";
+    private string _batteryLastUpdated = "Not sampled";
+    private double _batteryChargeValue;
+    private double _batteryRetentionValue;
 
     public MainViewModel(
         IAeroHardwareService hardware,
+        IBatteryService battery,
         bool isDemo,
         bool isElevated)
     {
         _hardware = hardware;
+        _battery = battery;
         IsDemo = isDemo;
         IsElevated = isElevated;
     }
@@ -163,6 +184,102 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _canControlFans, value);
     }
 
+    public string BatteryName
+    {
+        get => _batteryName;
+        private set => SetField(ref _batteryName, value);
+    }
+
+    public string BatteryCharge
+    {
+        get => _batteryCharge;
+        private set => SetField(ref _batteryCharge, value);
+    }
+
+    public string BatteryRetention
+    {
+        get => _batteryRetention;
+        private set => SetField(ref _batteryRetention, value);
+    }
+
+    public string BatteryState
+    {
+        get => _batteryState;
+        private set => SetField(ref _batteryState, value);
+    }
+
+    public string BatteryRemaining
+    {
+        get => _batteryRemaining;
+        private set => SetField(ref _batteryRemaining, value);
+    }
+
+    public string BatteryFullCapacity
+    {
+        get => _batteryFullCapacity;
+        private set => SetField(ref _batteryFullCapacity, value);
+    }
+
+    public string BatteryDesignCapacity
+    {
+        get => _batteryDesignCapacity;
+        private set => SetField(ref _batteryDesignCapacity, value);
+    }
+
+    public string BatteryCycleCount
+    {
+        get => _batteryCycleCount;
+        private set => SetField(ref _batteryCycleCount, value);
+    }
+
+    public string BatteryVoltage
+    {
+        get => _batteryVoltage;
+        private set => SetField(ref _batteryVoltage, value);
+    }
+
+    public string BatteryPowerFlow
+    {
+        get => _batteryPowerFlow;
+        private set => SetField(ref _batteryPowerFlow, value);
+    }
+
+    public string BatteryPowerSource
+    {
+        get => _batteryPowerSource;
+        private set => SetField(ref _batteryPowerSource, value);
+    }
+
+    public string BatteryConnectionState
+    {
+        get => _batteryConnectionState;
+        private set => SetField(ref _batteryConnectionState, value);
+    }
+
+    public string BatteryStatusMessage
+    {
+        get => _batteryStatusMessage;
+        private set => SetField(ref _batteryStatusMessage, value);
+    }
+
+    public string BatteryLastUpdated
+    {
+        get => _batteryLastUpdated;
+        private set => SetField(ref _batteryLastUpdated, value);
+    }
+
+    public double BatteryChargeValue
+    {
+        get => _batteryChargeValue;
+        private set => SetField(ref _batteryChargeValue, value);
+    }
+
+    public double BatteryRetentionValue
+    {
+        get => _batteryRetentionValue;
+        private set => SetField(ref _batteryRetentionValue, value);
+    }
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -194,19 +311,42 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        if (!await _refreshGate.WaitAsync(0, cancellationToken))
-        {
-            return;
-        }
+        await Task.WhenAll(
+            RefreshCoolingAsync(false, cancellationToken),
+            RefreshBatteryAsync(false, cancellationToken));
+    }
 
+    private async Task<HardwareSnapshot> GetHardwareSnapshotSafelyAsync(
+        CancellationToken cancellationToken)
+    {
         try
         {
-            var snapshot = await _hardware.GetSnapshotAsync(cancellationToken);
-            ApplySnapshot(snapshot);
+            return await _hardware.GetSnapshotAsync(cancellationToken);
         }
-        finally
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _refreshGate.Release();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return HardwareSnapshot.Unavailable(exception.Message);
+        }
+    }
+
+    private async Task<BatterySnapshot> GetBatterySnapshotSafelyAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _battery.GetSnapshotAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return BatterySnapshot.Unavailable(exception.Message);
         }
     }
 
@@ -223,7 +363,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             if (result.Succeeded)
             {
                 CustomFanPercent = percent;
-                await RefreshAsync(cancellationToken);
+                await RefreshCoolingAsync(true, cancellationToken);
             }
 
             return result;
@@ -245,7 +385,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             StatusMessage = result.Message;
             if (result.Succeeded)
             {
-                await RefreshAsync(cancellationToken);
+                await RefreshCoolingAsync(true, cancellationToken);
             }
 
             return result;
@@ -259,6 +399,58 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public void ReportStatus(string message)
     {
         StatusMessage = message;
+    }
+
+    private async Task RefreshCoolingAsync(
+        bool waitForTurn,
+        CancellationToken cancellationToken)
+    {
+        if (!await EnterRefreshAsync(_coolingRefreshGate, waitForTurn, cancellationToken))
+        {
+            return;
+        }
+
+        try
+        {
+            ApplySnapshot(await GetHardwareSnapshotSafelyAsync(cancellationToken));
+        }
+        finally
+        {
+            _coolingRefreshGate.Release();
+        }
+    }
+
+    private async Task RefreshBatteryAsync(
+        bool waitForTurn,
+        CancellationToken cancellationToken)
+    {
+        if (!await EnterRefreshAsync(_batteryRefreshGate, waitForTurn, cancellationToken))
+        {
+            return;
+        }
+
+        try
+        {
+            ApplyBatterySnapshot(await GetBatterySnapshotSafelyAsync(cancellationToken));
+        }
+        finally
+        {
+            _batteryRefreshGate.Release();
+        }
+    }
+
+    private static async Task<bool> EnterRefreshAsync(
+        SemaphoreSlim gate,
+        bool waitForTurn,
+        CancellationToken cancellationToken)
+    {
+        if (waitForTurn)
+        {
+            await gate.WaitAsync(cancellationToken);
+            return true;
+        }
+
+        return await gate.WaitAsync(0, cancellationToken);
     }
 
     private void ApplySnapshot(HardwareSnapshot snapshot)
@@ -284,6 +476,41 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             : "Restart as administrator if this model requires elevated WMI access.");
     }
 
+    private void ApplyBatterySnapshot(BatterySnapshot snapshot)
+    {
+        BatteryName = string.IsNullOrWhiteSpace(snapshot.Name)
+            ? "Windows battery"
+            : snapshot.Name;
+        BatteryCharge = FormatPercent(snapshot.ChargePercent);
+        BatteryChargeValue = ClampPercent(snapshot.ChargePercent);
+        BatteryRetention = FormatPercent(snapshot.CapacityRetentionPercent);
+        BatteryRetentionValue = ClampPercent(snapshot.CapacityRetentionPercent);
+        BatteryState = FormatBatteryState(snapshot.PowerState);
+        BatteryRemaining = FormatCapacity(snapshot.RemainingCapacityMilliwattHours);
+        BatteryFullCapacity = FormatCapacity(snapshot.FullChargeCapacityMilliwattHours);
+        BatteryDesignCapacity = FormatCapacity(snapshot.DesignCapacityMilliwattHours);
+        BatteryCycleCount = snapshot.CycleCount?.ToString(CultureInfo.InvariantCulture) ?? "--";
+        BatteryVoltage = snapshot.VoltageMillivolts is int voltage
+            ? $"{voltage / 1000d:0.00} V"
+            : "-- V";
+        BatteryPowerFlow = FormatPower(snapshot.PowerRateMilliwatts);
+        BatteryPowerSource = snapshot.PowerOnline switch
+        {
+            true => "AC power",
+            false => "Battery power",
+            null => "Unknown source"
+        };
+        BatteryConnectionState = snapshot.IsConnected
+            ? "Windows battery online"
+            : "Battery unavailable";
+        BatteryLastUpdated = snapshot.IsConnected
+            ? $"Updated {snapshot.CapturedAt:HH:mm:ss}"
+            : "No live sample";
+        BatteryStatusMessage = snapshot.ErrorMessage ?? (snapshot.IsConnected
+            ? "Read-only Windows telemetry. AeroControl does not change battery firmware settings."
+            : "Windows did not expose battery telemetry on this system.");
+    }
+
     private static string FormatTemperature(int? value) => value is int temperature
         ? $"{temperature} C"
         : "-- C";
@@ -291,6 +518,31 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private static string FormatRpm(int? value) => value is int rpm
         ? $"{rpm:N0} RPM"
         : "---- RPM";
+
+    private static string FormatPercent(int? value) => value is int percent
+        ? $"{percent}%"
+        : "--%";
+
+    private static double ClampPercent(int? value) => Math.Clamp(value ?? 0, 0, 100);
+
+    private static string FormatCapacity(int? value) => value is int capacity
+        ? $"{capacity / 1000d:0.0} Wh"
+        : "-- Wh";
+
+    private static string FormatPower(int? value) => value switch
+    {
+        null => "-- W",
+        0 => "Idle",
+        > 0 => $"+{value.Value / 1000d:0.0} W",
+        _ => $"{value.Value / 1000d:0.0} W"
+    };
+
+    private static string FormatBatteryState(BatteryPowerState state) => state switch
+    {
+        BatteryPowerState.FullyCharged => "Fully charged",
+        BatteryPowerState.OnBattery => "On battery",
+        _ => state.ToString()
+    };
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
@@ -314,7 +566,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
         _disposed = true;
+        await _battery.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 }

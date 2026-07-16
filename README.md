@@ -12,9 +12,11 @@ AeroControl is a lightweight, open-source .NET desktop utility for Gigabyte AERO
 
 ![AeroControl cooling dashboard](docs/images/dashboard.png)
 
+![AeroControl battery health view](docs/images/battery.png)
+
 ## Project status
 
-Version 0.1 is a **cooling-first MVP**, not yet a complete replacement for every Gigabyte Control Center module. The architecture is intentionally capability-driven so model support and additional controls can be added without bundling vendor software.
+Version 0.2 is a **cooling and battery preview**, not yet a complete replacement for every Gigabyte Control Center module. Cooling remains the default launch tab; the navigation bar opens independent views as the feature set grows.
 
 Currently implemented:
 
@@ -24,6 +26,8 @@ Currently implemented:
 - Fan health and automatic/fixed mode reporting
 - Automatic, 70%, 80%, 100%, and custom 30-100% fan control
 - Automatic firmware-mode restoration on exit
+- Read-only battery charge, power-state, voltage, capacity-retention, and cycle telemetry
+- Standard Windows battery APIs only; the Battery tab performs no firmware writes and requires no elevation
 - Runtime firmware capability discovery
 - Administrator-access detection and restart
 - Versioned, persisted hardware-risk acknowledgement before the first write
@@ -39,6 +43,12 @@ Currently implemented:
 | Systems without Gigabyte WMI ACPI classes | None | Monitoring and writes unavailable |
 
 See [docs/compatibility.md](docs/compatibility.md) for the verified duty values, observed RPMs, and safe model-reporting instructions.
+
+## Windows publisher and SmartScreen status
+
+Current GitHub release executables are **unsigned**, so Windows can show both an **Unknown publisher** UAC prompt and a Microsoft Defender SmartScreen reputation warning. This is expected for the current artifact and is not, by itself, a malware detection. Verify the SHA-256 listed on the release page and never disable Defender to run AeroControl.
+
+Public signing requires a verified publisher identity. The recommended path is Microsoft Artifact Signing with a Public Trust certificate profile and GitHub OIDC; signing removes the anonymous publisher identity, while SmartScreen also considers file, URL, app, and certificate reputation. See [docs/code-signing.md](docs/code-signing.md) for the researched implementation plan and alternatives.
 
 ## Requirements
 
@@ -70,14 +80,17 @@ dotnet run --project src/AeroControl/AeroControl.csproj -- --demo
 Regenerate the checked-in screenshot from the real WPF window:
 
 ```powershell
-dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --capture docs/images/dashboard.png
+dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --view cooling --capture docs/images/dashboard.png
+dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --view battery --capture docs/images/battery.png
 ```
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    UI[WPF dashboard] --> Gate[Risk and elevation gate]
+    UI[WPF tab shell] --> Cooling[Cooling view]
+    UI --> Battery[Battery view]
+    Cooling --> Gate[Risk and elevation gate]
     Gate --> Contract[IAeroHardwareService]
     Contract --> Live[Gigabyte WMI provider]
     Contract --> Demo[Deterministic demo provider]
@@ -86,7 +99,11 @@ flowchart LR
     Bridge --> Set[GB_WMIACPI_Set]
     Get --> Firmware[Laptop firmware and EC]
     Set --> Firmware
+    Battery --> BatteryContract[IBatteryService]
+    BatteryContract --> WindowsWmi[Standard Windows battery WMI]
+    BatteryContract --> PowerCfg[Structured powercfg XML report]
     Tests[Unit tests with fake bridge] --> Contract
+    Tests --> BatteryContract
 ```
 
 The core library owns models, duty encoding, capability checks, and firmware sequences. The WPF project owns presentation, elevation, settings, and human acknowledgement. Tests substitute a fake bridge, so automated builds never write to hardware.
@@ -106,11 +123,11 @@ The core library owns models, duty encoding, capability checks, and firmware seq
 ## Roadmap
 
 - System toggles: camera, touchpad, Windows key, Wi-Fi, and Bluetooth
-- Battery health and model-validated charge limits
+- Model-validated battery charge limits
 - Performance and power profiles
 - Keyboard backlight and RGB controls through documented/model-validated interfaces
 - Tray mode, startup profiles, and temperature history
-- Signed release artifacts and an opt-in updater
+- Artifact-signed release binaries and an opt-in updater
 - Community model packs backed by readback tests and compatibility evidence
 
 A control is not added merely because a WMI method exists. New writes require model evidence, a reversible path, readback where available, tests, and a clear UI safety boundary.

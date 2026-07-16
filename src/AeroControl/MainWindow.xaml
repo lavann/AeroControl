@@ -4,9 +4,9 @@
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
         Title="AeroControl"
         Width="1180"
-        Height="760"
+        Height="820"
         MinWidth="980"
-        MinHeight="680"
+        MinHeight="720"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource SurfaceBrush}"
         FontFamily="Segoe UI Variable Text"
@@ -77,8 +77,12 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1"
-                      VerticalScrollBarVisibility="Auto"
+        <TabControl x:Name="MainTabs"
+                Grid.Row="1"
+                SelectedIndex="0"
+                Style="{StaticResource NavigationTabControlStyle}">
+            <TabItem Header="Cooling" Style="{StaticResource NavigationTabItemStyle}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
             <Grid Margin="32,26,32,28">
                 <Grid.RowDefinitions>
@@ -324,6 +328,7 @@
                                            Foreground="{StaticResource InkBrush}" />
                                 <Slider Grid.Column="1"
                                         Margin="16,0"
+                                    AutomationProperties.Name="Custom fixed fan duty percentage"
                                         Minimum="30"
                                         Maximum="100"
                                         TickFrequency="5"
@@ -456,7 +461,264 @@
                     </Grid>
                 </Border>
             </Grid>
-        </ScrollViewer>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Battery" Style="{StaticResource NavigationTabItemStyle}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="32,26,32,28">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Battery health"
+                                           FontFamily="Bahnschrift"
+                                           FontSize="29"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource InkBrush}" />
+                                <TextBlock Margin="0,5,0,0"
+                                           Text="{Binding BatteryName}"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource InkBrush}" />
+                                <TextBlock Margin="0,2,0,0"
+                                           Text="Standard Windows power telemetry; no firmware writes"
+                                           FontSize="12"
+                                           Foreground="{StaticResource MutedInkBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom">
+                                <TextBlock Text="{Binding BatteryConnectionState}"
+                                           HorizontalAlignment="Right"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentBrush}" />
+                                <TextBlock Margin="0,4,0,0"
+                                           Text="{Binding BatteryLastUpdated}"
+                                           HorizontalAlignment="Right"
+                                           FontSize="11"
+                                           Foreground="{StaticResource MutedInkBrush}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <primitives:UniformGrid Grid.Row="1"
+                                                Margin="-6,20,-6,0"
+                                                Rows="1"
+                                                Columns="4">
+                            <Border Margin="6" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="CURRENT CHARGE"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="{Binding BatteryCharge}"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="28"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource InkBrush}" />
+                                    <ProgressBar Margin="0,12,0,0"
+                                                 AutomationProperties.Name="Current battery charge"
+                                                 Value="{Binding BatteryChargeValue, Mode=OneWay}"
+                                                 Style="{StaticResource BatteryProgressStyle}" />
+                                    <TextBlock Margin="0,8,0,0"
+                                               Text="{Binding BatteryState}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="6" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="CAPACITY RETENTION"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="{Binding BatteryRetention}"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="28"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource InkBrush}" />
+                                    <ProgressBar Margin="0,12,0,0"
+                                                 AutomationProperties.Name="Battery capacity retention"
+                                                 Value="{Binding BatteryRetentionValue, Mode=OneWay}"
+                                                 Foreground="{StaticResource CoolBrush}"
+                                                 Style="{StaticResource BatteryProgressStyle}" />
+                                    <TextBlock Margin="0,8,0,0"
+                                               Text="Full charge versus design"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="6" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="FULL CHARGE"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="{Binding BatteryFullCapacity}"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="25"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource InkBrush}" />
+                                    <TextBlock Margin="0,12,0,0"
+                                               Text="Design capacity"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock Margin="0,3,0,0"
+                                               Text="{Binding BatteryDesignCapacity}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource InkBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Margin="6" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="CYCLE COUNT"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="{Binding BatteryCycleCount}"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="28"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource InkBrush}" />
+                                    <TextBlock Margin="0,12,0,0"
+                                               Text="Reported by Windows"
+                                               FontSize="11"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </primitives:UniformGrid>
+
+                        <Grid Grid.Row="2" Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Margin="0,0,9,0" Style="{StaticResource PanelCardStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Power status"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="20"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource InkBrush}" />
+                                    <Grid Grid.Row="1" Margin="0,20,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Source" Foreground="{StaticResource MutedInkBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding BatteryPowerSource}" FontWeight="SemiBold" />
+                                    </Grid>
+                                    <Grid Grid.Row="2" Margin="0,13,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="State" Foreground="{StaticResource MutedInkBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding BatteryState}" FontWeight="SemiBold" />
+                                    </Grid>
+                                    <Grid Grid.Row="3" Margin="0,13,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Voltage" Foreground="{StaticResource MutedInkBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding BatteryVoltage}" FontWeight="SemiBold" />
+                                    </Grid>
+                                    <Grid Grid.Row="4" Margin="0,13,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Power flow" Foreground="{StaticResource MutedInkBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding BatteryPowerFlow}" FontWeight="SemiBold" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="1" Margin="9,0,0,0" Style="{StaticResource PanelCardStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Capacity detail"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="20"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource InkBrush}" />
+                                    <Grid Grid.Row="1" Margin="0,20,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Remaining" Foreground="{StaticResource MutedInkBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding BatteryRemaining}" FontWeight="SemiBold" />
+                                    </Grid>
+                                    <Grid Grid.Row="2" Margin="0,13,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Full charge capacity" Foreground="{StaticResource MutedInkBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding BatteryFullCapacity}" FontWeight="SemiBold" />
+                                    </Grid>
+                                    <Grid Grid.Row="3" Margin="0,13,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Design capacity" Foreground="{StaticResource MutedInkBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding BatteryDesignCapacity}" FontWeight="SemiBold" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <Border Grid.Row="3"
+                                Margin="0,18,0,0"
+                                Padding="16,12"
+                                Background="#E8EFEB"
+                                BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                            <TextBlock Text="{Binding BatteryStatusMessage}"
+                                       TextWrapping="Wrap"
+                                       FontSize="12"
+                                       Foreground="{StaticResource InkBrush}" />
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
 
     </Grid>
 </Window>

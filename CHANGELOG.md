@@ -11,6 +11,20 @@ The project follows semantic versioning after the initial public preview.
 - Community compatibility reports
 - Additional model-validated device controls
 
+## [0.2.0] - 2026-07-16
+
+### Added
+
+- Persistent Cooling and Battery navigation tabs, with Cooling as the default launch view
+- Read-only Windows battery dashboard for charge, power state, voltage, capacity retention, and reported cycles
+- Structured `powercfg /batteryreport /xml` parsing for design and full-charge capacity
+- Deterministic `--view cooling|battery` screenshot selection
+- Release-signing guidance for Microsoft Artifact Signing, SmartScreen, and UAC publisher identity
+
+### Changed
+
+- CI smoke-renders both application tabs from the published executable
+
 ## [0.1.2] - 2026-07-16
 
 ### Fixed

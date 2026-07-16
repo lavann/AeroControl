@@ -44,6 +44,10 @@ public sealed class AppSafetyTests : IDisposable
         {
             ["--demo"],
             ["--demo"]
+        },
+        {
+            ["--view", "battery", "--capture", "C:\\image.png"],
+            ["--view", "battery"]
         }
     };
 

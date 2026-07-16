@@ -8,7 +8,7 @@
         <SolidColorBrush x:Key="InkBrush" Color="#17211E" />
         <SolidColorBrush x:Key="MutedInkBrush" Color="#60706A" />
         <SolidColorBrush x:Key="HeaderBrush" Color="#172723" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#218B68" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#0B7452" />
         <SolidColorBrush x:Key="CoolBrush" Color="#367CA7" />
         <SolidColorBrush x:Key="WarningBrush" Color="#F0B24A" />
         <SolidColorBrush x:Key="DangerBrush" Color="#BE4B43" />
@@ -28,7 +28,6 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Padding" Value="16,9" />
             <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -74,6 +73,95 @@
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="NavigationTabControlStyle" TargetType="TabControl">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="48" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border Background="#E8EFEB"
+                                    BorderBrush="{StaticResource LineBrush}"
+                                    BorderThickness="0,0,0,1">
+                                <TabPanel Margin="24,0"
+                                          IsItemsHost="True"
+                                          KeyboardNavigation.TabIndex="1" />
+                            </Border>
+                            <ContentPresenter Grid.Row="1"
+                                              ContentSource="SelectedContent"
+                                              KeyboardNavigation.TabIndex="2" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="NavigationTabItemStyle" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource MutedInkBrush}" />
+            <Setter Property="FontFamily" Value="Bahnschrift" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="20,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabChrome"
+                                MinWidth="112"
+                                Padding="{TemplateBinding Padding}"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="0,0,0,3">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              ContentSource="Header" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="TabChrome" Property="Background" Value="#F3F6F2" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#DCE9E3" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="{StaticResource WarningBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BatteryProgressStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="7" />
+            <Setter Property="Minimum" Value="0" />
+            <Setter Property="Maximum" Value="100" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="#DFE7E2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid>
+                            <Border x:Name="PART_Track"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="3" />
+                            <Border x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    Background="{TemplateBinding Foreground}"
+                                    CornerRadius="3" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Application.Resources>
 </Application>

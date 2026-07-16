@@ -11,36 +11,37 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        var isDemo = e.Args.Any(argument =>
-            string.Equals(argument, "--demo", StringComparison.OrdinalIgnoreCase));
-        var capturePath = GetOptionValue(e.Args, "--capture");
-
-        IAeroHardwareService hardware = isDemo
-            ? new DemoHardwareService()
-            : new GigabyteHardwareService();
-        var settings = new AppSettingsStore();
-        var window = new MainWindow(hardware, settings, isDemo, capturePath);
-        MainWindow = window;
-        window.Show();
-    }
-
-    private static string? GetOptionValue(string[] arguments, string optionName)
-    {
-        for (var index = 0; index < arguments.Length; index++)
+        AppLaunchOptions options;
+        try
         {
-            var argument = arguments[index];
-            if (argument.StartsWith($"{optionName}=", StringComparison.OrdinalIgnoreCase))
-            {
-                return argument[(optionName.Length + 1)..];
-            }
-
-            if (string.Equals(argument, optionName, StringComparison.OrdinalIgnoreCase) &&
-                index + 1 < arguments.Length)
-            {
-                return arguments[index + 1];
-            }
+            options = AppLaunchOptions.Parse(e.Args);
+        }
+        catch (ArgumentException exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                "Invalid AeroControl option",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(2);
+            return;
         }
 
-        return null;
+        IAeroHardwareService hardware = options.IsDemo
+            ? new DemoHardwareService()
+            : new GigabyteHardwareService();
+        IBatteryService battery = options.IsDemo
+            ? new DemoBatteryService()
+            : new WindowsBatteryService();
+        var settings = new AppSettingsStore();
+        var window = new MainWindow(
+            hardware,
+            battery,
+            settings,
+            options.IsDemo,
+            options.CapturePath,
+            options.InitialView);
+        MainWindow = window;
+        window.Show();
     }
 }

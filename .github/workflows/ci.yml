@@ -44,7 +44,64 @@ jobs:
           --output artifacts/win-x64
 
       - name: Smoke published demo
-        run: artifacts/win-x64/AeroControl.exe --demo --capture artifacts/smoke/dashboard.png
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & artifacts/win-x64/AeroControl.exe --demo --view cooling --capture artifacts/smoke/cooling.png
+          if ($LASTEXITCODE -ne 0) { throw "Cooling view smoke failed with exit code $LASTEXITCODE." }
+          & artifacts/win-x64/AeroControl.exe --demo --view battery --capture artifacts/smoke/battery.png
+          if ($LASTEXITCODE -ne 0) { throw "Battery view smoke failed with exit code $LASTEXITCODE." }
+          foreach ($image in 'artifacts/smoke/cooling.png', 'artifacts/smoke/battery.png') {
+            if (-not (Test-Path $image)) { throw "Missing smoke image: $image" }
+            if ((Get-Item $image).Length -lt 10000) { throw "Smoke image is unexpectedly small: $image" }
+          }
+          if ((Get-FileHash artifacts/smoke/cooling.png).Hash -eq (Get-FileHash artifacts/smoke/battery.png).Hash) {
+            throw 'Cooling and Battery smoke images are identical.'
+          }
+          Add-Type -AssemblyName System.Drawing
+          function Get-AccentCount([System.Drawing.Bitmap]$bitmap, [int]$startX, [int]$endX) {
+            $count = 0
+            for ($y = 65; $y -lt 100; $y++) {
+              for ($x = $startX; $x -lt $endX; $x++) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                if ($pixel.R -eq 11 -and $pixel.G -eq 116 -and $pixel.B -eq 82) { $count++ }
+              }
+            }
+            return $count
+          }
+          function Get-BodyColorCount(
+            [System.Drawing.Bitmap]$bitmap,
+            [int]$red,
+            [int]$green,
+            [int]$blue) {
+            $count = 0
+            for ($y = 240; $y -lt 365; $y++) {
+              for ($x = 25; $x -lt 305; $x++) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                if ($pixel.R -eq $red -and $pixel.G -eq $green -and $pixel.B -eq $blue) { $count++ }
+              }
+            }
+            return $count
+          }
+          $cooling = [System.Drawing.Bitmap]::new((Resolve-Path artifacts/smoke/cooling.png))
+          $battery = [System.Drawing.Bitmap]::new((Resolve-Path artifacts/smoke/battery.png))
+          try {
+            if ((Get-AccentCount $cooling 20 136) -lt 100 -or (Get-AccentCount $cooling 136 252) -gt 10) {
+              throw 'Cooling screenshot does not show the Cooling tab as selected.'
+            }
+            if ((Get-AccentCount $battery 136 252) -lt 100 -or (Get-AccentCount $battery 20 136) -gt 10) {
+              throw 'Battery screenshot does not show the Battery tab as selected.'
+            }
+            if ((Get-BodyColorCount $cooling 190 75 67) -lt 100 -or (Get-BodyColorCount $cooling 11 116 82) -gt 10) {
+              throw 'Cooling screenshot does not contain the expected Cooling dashboard body.'
+            }
+            if ((Get-BodyColorCount $battery 11 116 82) -lt 500 -or (Get-BodyColorCount $battery 190 75 67) -gt 10) {
+              throw 'Battery screenshot does not contain the expected Battery dashboard body.'
+            }
+          } finally {
+            $cooling.Dispose()
+            $battery.Dispose()
+          }
 
       - name: Verify artifact legal files
         shell: pwsh
@@ -58,5 +115,5 @@ jobs:
           name: AeroControl-win-x64
           path: |
             artifacts/win-x64/
-            artifacts/smoke/dashboard.png
+            artifacts/smoke/*.png
           if-no-files-found: error

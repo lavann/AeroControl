@@ -19,26 +19,31 @@ public partial class MainWindow : Window, IDisposable
     private readonly bool _isDemo;
     private readonly bool _isElevated;
     private readonly string? _capturePath;
+    private readonly AppView _initialView;
     private readonly DispatcherTimer _refreshTimer;
+    private readonly AsyncCloseGate _closeGate = new();
     private readonly CancellationTokenSource _shutdown = new();
     private bool _automaticRestoreRequired;
-    private bool _closingAfterRestore;
+    private bool _allowFinalClose;
     private bool _disposed;
     private bool _demoRiskAccepted;
     private Task<Core.Models.ControlResult>? _activeControlTask;
 
-    public MainWindow(
+    internal MainWindow(
         IAeroHardwareService hardware,
+        IBatteryService battery,
         AppSettingsStore settings,
         bool isDemo,
-        string? capturePath)
+        string? capturePath,
+        AppView initialView)
     {
         InitializeComponent();
         _settings = settings;
         _isDemo = isDemo;
         _isElevated = ElevationService.IsAdministrator();
         _capturePath = capturePath;
-        _viewModel = new MainViewModel(hardware, isDemo, _isElevated);
+        _initialView = initialView;
+        _viewModel = new MainViewModel(hardware, battery, isDemo, _isElevated);
         DataContext = _viewModel;
         _refreshTimer = new DispatcherTimer
         {
@@ -49,16 +54,31 @@ public partial class MainWindow : Window, IDisposable
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        await _viewModel.InitializeAsync(_shutdown.Token);
-        UpdateAccessState();
-        _refreshTimer.Start();
-
-        if (!string.IsNullOrWhiteSpace(_capturePath))
+        try
         {
-            await Dispatcher.InvokeAsync(UpdateLayout, DispatcherPriority.Loaded);
-            await Task.Delay(250);
-            CaptureWindow(_capturePath);
-            Application.Current.Shutdown();
+            await _viewModel.InitializeAsync(_shutdown.Token);
+            MainTabs.SelectedIndex = (int)_initialView;
+
+            UpdateAccessState();
+            _refreshTimer.Start();
+
+            if (!string.IsNullOrWhiteSpace(_capturePath))
+            {
+                await Dispatcher.InvokeAsync(UpdateLayout, DispatcherPriority.Loaded);
+                await Task.Delay(250, _shutdown.Token);
+                if (MainTabs.SelectedIndex != (int)_initialView)
+                {
+                    throw new InvalidOperationException(
+                        $"AeroControl could not select the requested {_initialView} view.");
+                }
+
+                CaptureWindow(_capturePath);
+                Application.Current.Shutdown();
+            }
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            // Normal window shutdown while startup telemetry is still loading.
         }
     }
 
@@ -109,7 +129,14 @@ public partial class MainWindow : Window, IDisposable
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await _viewModel.RefreshAsync(_shutdown.Token);
+        try
+        {
+            await _viewModel.RefreshAsync(_shutdown.Token);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            // Normal window shutdown during a manual refresh.
+        }
     }
 
     private void AccessButton_Click(object sender, RoutedEventArgs e)
@@ -215,10 +242,35 @@ public partial class MainWindow : Window, IDisposable
 
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
-        _refreshTimer.Stop();
-        if (!_closingAfterRestore && _activeControlTask is { } activeControlTask)
+        if (_allowFinalClose)
         {
-            e.Cancel = true;
+            Dispose();
+            return;
+        }
+
+        e.Cancel = true;
+        if (!_closeGate.TryBegin(CompleteShutdownAsync, out var shutdownOperation))
+        {
+            return;
+        }
+
+        _refreshTimer.Stop();
+        var shouldClose = await shutdownOperation;
+        if (!shouldClose)
+        {
+            _closeGate.Reset(shutdownOperation);
+            _refreshTimer.Start();
+            return;
+        }
+
+        _allowFinalClose = true;
+        RequestCloseAfterHandler();
+    }
+
+    private async Task<bool> CompleteShutdownAsync()
+    {
+        if (_activeControlTask is { } activeControlTask)
+        {
             try
             {
                 var result = await activeControlTask;
@@ -227,21 +279,17 @@ public partial class MainWindow : Window, IDisposable
             catch (Exception exception)
             {
                 _automaticRestoreRequired = true;
-                _viewModel.ReportStatus($"Active fan command failed during shutdown: {exception.Message}");
+                _viewModel.ReportStatus(
+                    $"Active fan command failed during shutdown: {exception.Message}");
             }
 
             _activeControlTask = null;
-            Close();
-            return;
         }
 
-        if (!_closingAfterRestore &&
-            _automaticRestoreRequired &&
-            RestoreAutomaticOnExitCheckBox.IsChecked == true)
+        if (_automaticRestoreRequired && RestoreAutomaticOnExitCheckBox.IsChecked == true)
         {
-            e.Cancel = true;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            Core.Models.ControlResult? result = null;
+            Core.Models.ControlResult result;
             try
             {
                 result = await _viewModel.RestoreAutomaticAsync(timeout.Token);
@@ -265,17 +313,32 @@ public partial class MainWindow : Window, IDisposable
                     MessageBoxResult.Yes);
                 if (choice == MessageBoxResult.Yes)
                 {
-                    _refreshTimer.Start();
-                    return;
+                    return false;
                 }
             }
-
-            _closingAfterRestore = true;
-            Close();
-            return;
         }
 
-        Dispose();
+        _shutdown.Cancel();
+        try
+        {
+            await _viewModel.DisposeAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                this,
+                $"AeroControl could not complete battery-report cleanup.\n\n{exception.Message}",
+                "Battery cleanup warning",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
+        return true;
+    }
+
+    private void RequestCloseAfterHandler()
+    {
+        Dispatcher.BeginInvoke(Close, DispatcherPriority.ApplicationIdle);
     }
 
     private async Task<Core.Models.ControlResult> TrackControlAsync(

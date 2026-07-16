@@ -47,10 +47,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & artifacts/win-x64/AeroControl.exe --demo --view cooling --capture artifacts/smoke/cooling.png
-          if ($LASTEXITCODE -ne 0) { throw "Cooling view smoke failed with exit code $LASTEXITCODE." }
-          & artifacts/win-x64/AeroControl.exe --demo --view battery --capture artifacts/smoke/battery.png
-          if ($LASTEXITCODE -ne 0) { throw "Battery view smoke failed with exit code $LASTEXITCODE." }
+          $coolingProcess = Start-Process -FilePath artifacts/win-x64/AeroControl.exe -ArgumentList @(
+            '--demo', '--view', 'cooling', '--capture', 'artifacts/smoke/cooling.png'
+          ) -Wait -PassThru
+          if ($coolingProcess.ExitCode -ne 0) { throw "Cooling view smoke failed with exit code $($coolingProcess.ExitCode)." }
+          $batteryProcess = Start-Process -FilePath artifacts/win-x64/AeroControl.exe -ArgumentList @(
+            '--demo', '--view', 'battery', '--capture', 'artifacts/smoke/battery.png'
+          ) -Wait -PassThru
+          if ($batteryProcess.ExitCode -ne 0) { throw "Battery view smoke failed with exit code $($batteryProcess.ExitCode)." }
           foreach ($image in 'artifacts/smoke/cooling.png', 'artifacts/smoke/battery.png') {
             if (-not (Test-Path $image)) { throw "Missing smoke image: $image" }
             if ((Get-Item $image).Length -lt 10000) { throw "Smoke image is unexpectedly small: $image" }

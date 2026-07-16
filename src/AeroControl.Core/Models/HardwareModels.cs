@@ -3,18 +3,25 @@ namespace AeroControl.Core.Models;
 public sealed record DeviceIdentity(
     string Manufacturer,
     string Model,
+    string SystemSku,
     string BiosVersion,
     bool FirmwareInterfaceDetected,
-    bool IsVerifiedModel)
+    bool IsVerifiedConfiguration)
 {
     public string DisplayName => string.Join(' ', new[] { Manufacturer, Model }
         .Where(value => !string.IsNullOrWhiteSpace(value)));
 
-    public string SupportLabel => IsVerifiedModel
-        ? "Verified model"
+    public string SupportLabel => IsVerifiedConfiguration
+        ? "Verified configuration"
         : FirmwareInterfaceDetected
-            ? "Compatible firmware detected; model unverified"
+            ? "Compatible firmware detected; configuration read-only"
             : "Gigabyte firmware interface not detected";
+
+    public string HardwareKey => string.Join('|',
+        Manufacturer,
+        Model,
+        SystemSku,
+        BiosVersion);
 }
 
 public enum FanControlMode
@@ -63,6 +70,12 @@ public sealed record HardwareCapabilities(
         GetMethods.Contains("getRpm2");
 
     public bool CanControlFans =>
+        GetMethods.Contains("GetCPUFanDuty") &&
+        GetMethods.Contains("GetGPUFanDuty") &&
+        GetMethods.Contains("GetAutoFanStatus") &&
+        GetMethods.Contains("GetStepFanStatus") &&
+        GetMethods.Contains("GetFixedFanStatus") &&
+        GetMethods.Contains("GetFixedFanSpeed") &&
         SetMethods.Contains("SetAutoFanStatus") &&
         SetMethods.Contains("SetStepFanStatus") &&
         SetMethods.Contains("SetFixedFanStatus") &&
@@ -78,7 +91,11 @@ public sealed record ControlResult(
     bool Succeeded,
     string Message,
     int? RequestedPercent = null,
-    int? ReportedPercent = null)
+    int? ReportedPercent = null,
+    bool RequiresAutomaticRestore = false)
 {
-    public static ControlResult Failure(string message) => new(false, message);
+    public static ControlResult Failure(
+        string message,
+        bool requiresAutomaticRestore = false) =>
+        new(false, message, RequiresAutomaticRestore: requiresAutomaticRestore);
 }

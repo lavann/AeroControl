@@ -21,9 +21,11 @@ public partial class MainWindow : Window, IDisposable
     private readonly string? _capturePath;
     private readonly DispatcherTimer _refreshTimer;
     private readonly CancellationTokenSource _shutdown = new();
-    private bool _fanModeChanged;
+    private bool _automaticRestoreRequired;
     private bool _closingAfterRestore;
     private bool _disposed;
+    private bool _demoRiskAccepted;
+    private Task<Core.Models.ControlResult>? _activeControlTask;
 
     public MainWindow(
         IAeroHardwareService hardware,
@@ -84,12 +86,13 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
-        var result = string.Equals(preset, "auto", StringComparison.OrdinalIgnoreCase)
-            ? await _viewModel.RestoreAutomaticAsync(_shutdown.Token)
-            : await _viewModel.SetFanPercentAsync(
+        var restoringAutomatic = string.Equals(preset, "auto", StringComparison.OrdinalIgnoreCase);
+        var controlTask = restoringAutomatic
+            ? _viewModel.RestoreAutomaticAsync(_shutdown.Token)
+            : _viewModel.SetFanPercentAsync(
                 int.Parse(preset, CultureInfo.InvariantCulture),
                 _shutdown.Token);
-        _fanModeChanged |= result.Succeeded;
+        await TrackControlAsync(controlTask);
     }
 
     private async void CustomFanButton_Click(object sender, RoutedEventArgs e)
@@ -99,10 +102,9 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
-        var result = await _viewModel.SetFanPercentAsync(
+        await TrackControlAsync(_viewModel.SetFanPercentAsync(
             (int)_viewModel.CustomFanPercent,
-            _shutdown.Token);
-        _fanModeChanged |= result.Succeeded;
+            _shutdown.Token));
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
@@ -141,7 +143,21 @@ public partial class MainWindow : Window, IDisposable
             return false;
         }
 
-        return _settings.HasAcceptedCurrentRisk() || ShowRiskNotice();
+        if (string.IsNullOrWhiteSpace(_viewModel.HardwareKey))
+        {
+            MessageBox.Show(
+                this,
+                "AeroControl could not identify this hardware configuration. Firmware writes remain locked.",
+                "Hardware identity unavailable",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        var accepted = _isDemo
+            ? _demoRiskAccepted
+            : _settings.HasAcceptedCurrentRisk(_viewModel.HardwareKey);
+        return accepted || ShowRiskNotice();
     }
 
     private bool ShowRiskNotice()
@@ -152,7 +168,28 @@ public partial class MainWindow : Window, IDisposable
         };
         if (dialog.ShowDialog() == true && dialog.Accepted)
         {
-            _settings.AcceptCurrentRisk();
+            if (_isDemo)
+            {
+                _demoRiskAccepted = true;
+            }
+            else if (!string.IsNullOrWhiteSpace(_viewModel.HardwareKey))
+            {
+                if (!_settings.AcceptCurrentRisk(_viewModel.HardwareKey))
+                {
+                    MessageBox.Show(
+                        this,
+                        "AeroControl could not save the safety acknowledgement. Firmware writes remain locked.",
+                        "Settings unavailable",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+
             UpdateAccessState();
             return true;
         }
@@ -162,9 +199,14 @@ public partial class MainWindow : Window, IDisposable
 
     private void UpdateAccessState()
     {
-        var accepted = _settings.HasAcceptedCurrentRisk();
+        var accepted = _isDemo
+            ? _demoRiskAccepted
+            : !string.IsNullOrWhiteSpace(_viewModel.HardwareKey) &&
+                _settings.HasAcceptedCurrentRisk(_viewModel.HardwareKey);
         RiskStatusText.Text = accepted
-            ? "Safety notice accepted for this version"
+            ? _isDemo
+                ? "Safety notice accepted for this demo session"
+                : "Safety notice accepted for this hardware and version"
             : "Firmware writes locked until the safety notice is accepted";
         RestartAdminButton.Visibility = !_isDemo && !_isElevated
             ? Visibility.Visible
@@ -174,19 +216,58 @@ public partial class MainWindow : Window, IDisposable
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
         _refreshTimer.Stop();
+        if (!_closingAfterRestore && _activeControlTask is { } activeControlTask)
+        {
+            e.Cancel = true;
+            try
+            {
+                var result = await activeControlTask;
+                _automaticRestoreRequired = result.RequiresAutomaticRestore;
+            }
+            catch (Exception exception)
+            {
+                _automaticRestoreRequired = true;
+                _viewModel.ReportStatus($"Active fan command failed during shutdown: {exception.Message}");
+            }
+
+            _activeControlTask = null;
+            Close();
+            return;
+        }
+
         if (!_closingAfterRestore &&
-            _fanModeChanged &&
+            _automaticRestoreRequired &&
             RestoreAutomaticOnExitCheckBox.IsChecked == true)
         {
             e.Cancel = true;
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            Core.Models.ControlResult? result = null;
             try
             {
-                await _viewModel.RestoreAutomaticAsync(timeout.Token);
+                result = await _viewModel.RestoreAutomaticAsync(timeout.Token);
             }
-            catch
+            catch (Exception exception)
             {
-                // Shutdown must continue even if the firmware provider is unavailable.
+                result = Core.Models.ControlResult.Failure(
+                    $"Automatic restoration failed: {exception.Message}",
+                    true);
+            }
+
+            _automaticRestoreRequired = result.RequiresAutomaticRestore;
+            if (!result.Succeeded)
+            {
+                var choice = MessageBox.Show(
+                    this,
+                    $"{result.Message}\n\nAeroControl could not verify automatic fan control. Keep the app open and retry?",
+                    "Automatic fan restoration not verified",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning,
+                    MessageBoxResult.Yes);
+                if (choice == MessageBoxResult.Yes)
+                {
+                    _refreshTimer.Start();
+                    return;
+                }
             }
 
             _closingAfterRestore = true;
@@ -195,6 +276,34 @@ public partial class MainWindow : Window, IDisposable
         }
 
         Dispose();
+    }
+
+    private async Task<Core.Models.ControlResult> TrackControlAsync(
+        Task<Core.Models.ControlResult> controlTask)
+    {
+        _activeControlTask = controlTask;
+        try
+        {
+            var result = await controlTask;
+            _automaticRestoreRequired = result.RequiresAutomaticRestore;
+            return result;
+        }
+        catch (Exception exception)
+        {
+            _automaticRestoreRequired = true;
+            var result = Core.Models.ControlResult.Failure(
+                $"Fan command failed unexpectedly: {exception.Message}",
+                true);
+            _viewModel.ReportStatus(result.Message);
+            return result;
+        }
+        finally
+        {
+            if (ReferenceEquals(_activeControlTask, controlTask))
+            {
+                _activeControlTask = null;
+            }
+        }
     }
 
     private void CaptureWindow(string path)

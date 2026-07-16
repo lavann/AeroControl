@@ -21,20 +21,22 @@ public static class ElevationService
             return false;
         }
 
-        var arguments = Environment.GetCommandLineArgs()
-            .Skip(1)
-            .Where(argument => !string.Equals(argument, "--capture", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        var arguments = GetRelaunchArguments(Environment.GetCommandLineArgs().Skip(1));
 
         try
         {
-            Process.Start(new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = executable,
-                Arguments = string.Join(' ', arguments.Select(QuoteArgument)),
                 UseShellExecute = true,
                 Verb = "runas"
-            });
+            };
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            Process.Start(startInfo);
             Application.Current.Shutdown();
             return true;
         }
@@ -44,6 +46,31 @@ public static class ElevationService
         }
     }
 
-    private static string QuoteArgument(string argument) =>
-        argument.Contains(' ') ? $"\"{argument.Replace("\"", "\\\"")}\"" : argument;
+    internal static IReadOnlyList<string> GetRelaunchArguments(IEnumerable<string> arguments)
+    {
+        var source = arguments.ToArray();
+        var result = new List<string>();
+        for (var index = 0; index < source.Length; index++)
+        {
+            var argument = source[index];
+            if (string.Equals(argument, "--capture", StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 < source.Length)
+                {
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (argument.StartsWith("--capture=", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            result.Add(argument);
+        }
+
+        return result;
+    }
 }

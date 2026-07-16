@@ -26,6 +26,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _isBusy;
     private bool _canControlFans;
     private bool _disposed;
+    private string _hardwareKey = string.Empty;
 
     public MainViewModel(
         IAeroHardwareService hardware,
@@ -144,6 +145,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public string CustomFanLabel => $"{CustomFanPercent:0}%";
 
+    public string HardwareKey
+    {
+        get => _hardwareKey;
+        private set => SetField(ref _hardwareKey, value);
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -164,13 +171,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             DeviceName = string.IsNullOrWhiteSpace(identity.DisplayName)
                 ? "Unknown Gigabyte device"
                 : identity.DisplayName;
-            DeviceDetails = $"BIOS {identity.BiosVersion}  |  {identity.SupportLabel}";
+            DeviceDetails = $"SKU {identity.SystemSku}  |  BIOS {identity.BiosVersion}  |  {identity.SupportLabel}";
+            HardwareKey = identity.HardwareKey;
 
             var capabilities = await _hardware.GetCapabilitiesAsync(cancellationToken);
-            CanControlFans = capabilities.CanControlFans;
-            CapabilitySummary = capabilities.CanControlFans
+            CanControlFans = capabilities.CanControlFans && (IsDemo || identity.IsVerifiedConfiguration);
+            CapabilitySummary = CanControlFans
                 ? $"{capabilities.GetMethods.Count} read methods, {capabilities.SetMethods.Count} write methods"
-                : "Fan write methods unavailable";
+                : capabilities.CanControlFans
+                    ? "Write methods detected; configuration unverified"
+                    : "Fan write or readback methods unavailable";
         }
         catch (Exception exception)
         {
@@ -246,6 +256,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public void ReportStatus(string message)
+    {
+        StatusMessage = message;
+    }
+
     private void ApplySnapshot(HardwareSnapshot snapshot)
     {
         CpuTemperature = FormatTemperature(snapshot.CpuTemperatureCelsius);
@@ -300,7 +315,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _disposed = true;
-        _refreshGate.Dispose();
         GC.SuppressFinalize(this);
     }
 }

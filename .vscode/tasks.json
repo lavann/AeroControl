@@ -115,6 +115,19 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "test"
+		},
+		{
+			"label": "capture AeroControl dashboard",
+			"type": "shell",
+			"command": "${workspaceFolder}/src/AeroControl/bin/Debug/net8.0-windows10.0.17763.0/AeroControl.exe",
+			"args": [
+				"--demo",
+				"--capture",
+				"docs/images/dashboard.png"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }

@@ -7,13 +7,15 @@ namespace AeroControl.Core.Wmi;
 [SupportedOSPlatform("windows10.0.17763")]
 public sealed class SystemManagementBridge : IWmiBridge
 {
+    private static readonly TimeSpan OperationTimeout = TimeSpan.FromSeconds(2);
+
     public IReadOnlySet<string> GetMethodNames(string namespacePath, string className)
     {
         var scope = CreateConnectedScope(namespacePath);
         using var managementClass = new ManagementClass(
             scope,
             new ManagementPath(className),
-            null);
+            new ObjectGetOptions { Timeout = OperationTimeout });
         managementClass.Get();
 
         return managementClass.Methods
@@ -32,8 +34,8 @@ public sealed class SystemManagementBridge : IWmiBridge
         using var managementClass = new ManagementClass(
             scope,
             new ManagementPath(className),
-            null);
-        using var instances = managementClass.GetInstances();
+            new ObjectGetOptions { Timeout = OperationTimeout });
+        using var instances = managementClass.GetInstances(CreateEnumerationOptions());
 
         foreach (ManagementObject instance in instances)
         {
@@ -48,7 +50,10 @@ public sealed class SystemManagementBridge : IWmiBridge
                     }
                 }
 
-                using var output = instance.InvokeMethod(methodName, input, null);
+                using var output = instance.InvokeMethod(
+                    methodName,
+                    input,
+                    new InvokeMethodOptions { Timeout = OperationTimeout });
                 var values = output?.Properties
                     .Cast<PropertyData>()
                     .ToDictionary(
@@ -72,7 +77,8 @@ public sealed class SystemManagementBridge : IWmiBridge
         var scope = CreateConnectedScope(namespacePath);
         using var searcher = new ManagementObjectSearcher(
             scope,
-            new ObjectQuery(query));
+            new ObjectQuery(query),
+            CreateEnumerationOptions());
         using var results = searcher.Get();
 
         foreach (ManagementObject result in results)
@@ -97,10 +103,17 @@ public sealed class SystemManagementBridge : IWmiBridge
         var options = new ConnectionOptions
         {
             EnablePrivileges = true,
-            Impersonation = ImpersonationLevel.Impersonate
+            Impersonation = ImpersonationLevel.Impersonate,
+            Timeout = OperationTimeout
         };
         var scope = new ManagementScope(namespacePath, options);
         scope.Connect();
         return scope;
     }
+
+    private static System.Management.EnumerationOptions CreateEnumerationOptions() => new()
+    {
+        ReturnImmediately = false,
+        Timeout = OperationTimeout
+    };
 }

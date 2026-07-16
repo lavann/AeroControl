@@ -35,7 +35,7 @@ Currently implemented:
 | Model | Firmware interface | Status |
 | --- | --- | --- |
 | Gigabyte AERO 15-SA / P75SA | `GB_WMIACPI_Get`, `GB_WMIACPI_Set` | Verified on BIOS FB09 |
-| Other Gigabyte/AORUS laptops exposing the same methods | Capability-detected at runtime | Experimental; writes are unverified |
+| Other Gigabyte/AORUS laptops exposing the same methods | Capability-detected at runtime | Read-only; writes disabled until exact configuration verification |
 | Systems without Gigabyte WMI ACPI classes | None | Monitoring and writes unavailable |
 
 See [docs/compatibility.md](docs/compatibility.md) for the verified duty values, observed RPMs, and safe model-reporting instructions.
@@ -94,9 +94,11 @@ The core library owns models, duty encoding, capability checks, and firmware seq
 ## Safety invariants
 
 - No write occurs before explicit risk acceptance.
+- Live risk acceptance is bound to the exact manufacturer/model/SKU/BIOS configuration; demo acceptance is never persisted.
+- Firmware writes are allowlisted to the exact verified configuration, not enabled by method-name detection alone.
 - Fixed duty is constrained to the vendor UI's observed 30-100% range.
 - Fan presets use the verified raw mapping: 70% = 160, 80% = 183, 100% = 229.
-- Both system and GPU fan paths are updated as one operation.
+- System and GPU fan paths are updated in one serialized sequence, fully read back, and rolled back to verified automatic mode after any partial failure.
 - Automatic mode remains available and is restored on exit by default.
 - Unsupported methods are detected before a write is attempted.
 - Proprietary Gigabyte DLLs, drivers, firmware, and source are not part of this repository.

@@ -13,11 +13,14 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
     private const string GetClass = "GB_WMIACPI_Get";
     private const string SetClass = "GB_WMIACPI_Set";
 
-    private static readonly HashSet<string> VerifiedModels = new(
-        ["AERO 15-SA"],
-        StringComparer.OrdinalIgnoreCase);
+    private static readonly VerifiedConfiguration[] VerifiedConfigurations =
+    [
+        new("GIGABYTE", "AERO 15-SA", "P75SA", "FB09")
+    ];
 
     private readonly IWmiBridge _wmi;
+    private readonly object _controlGate = new();
+    private bool _automaticRestoreRequired;
 
     public GigabyteHardwareService(IWmiBridge? wmi = null)
     {
@@ -39,23 +42,24 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
     public Task<ControlResult> SetFixedFanPercentAsync(
         int percent,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => SetFixedFanPercent(percent), cancellationToken);
+        Task.Run(() => SetFixedFanPercent(percent, cancellationToken));
 
     public Task<ControlResult> RestoreAutomaticFanControlAsync(
         CancellationToken cancellationToken = default) =>
-        Task.Run(RestoreAutomaticFanControl, cancellationToken);
+        Task.Run(() => RestoreAutomaticFanControl(cancellationToken));
 
     private DeviceIdentity GetDeviceIdentity()
     {
         var system = _wmi.QueryFirst(
             SystemNamespace,
-            "SELECT Manufacturer, Model FROM Win32_ComputerSystem");
+            "SELECT Manufacturer, Model, SystemSKUNumber FROM Win32_ComputerSystem");
         var bios = _wmi.QueryFirst(
             SystemNamespace,
             "SELECT SMBIOSBIOSVersion FROM Win32_BIOS");
 
         var manufacturer = GetString(system, "Manufacturer");
         var model = GetString(system, "Model");
+        var systemSku = GetString(system, "SystemSKUNumber");
         var biosVersion = GetString(bios, "SMBIOSBIOSVersion");
 
         var firmwareDetected = false;
@@ -71,9 +75,10 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         return new DeviceIdentity(
             manufacturer,
             model,
+            systemSku,
             biosVersion,
             firmwareDetected,
-            VerifiedModels.Contains(model));
+            IsVerifiedConfiguration(manufacturer, model, systemSku, biosVersion));
     }
 
     private HardwareCapabilities GetCapabilities()
@@ -148,7 +153,9 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         }
     }
 
-    private ControlResult SetFixedFanPercent(int percent)
+    private ControlResult SetFixedFanPercent(
+        int percent,
+        CancellationToken cancellationToken)
     {
         byte duty;
         try
@@ -157,68 +164,162 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         }
         catch (ArgumentOutOfRangeException exception)
         {
-            return ControlResult.Failure(exception.Message);
+            return ControlResult.Failure(exception.Message, _automaticRestoreRequired);
         }
 
-        try
+        lock (_controlGate)
         {
-            var capabilities = GetCapabilities();
-            if (!capabilities.CanControlFans)
+            HardwareCapabilities? capabilities = null;
+            var mutationStarted = false;
+            try
             {
-                return ControlResult.Failure(
-                    "This firmware does not expose the required fixed-fan methods.");
+                cancellationToken.ThrowIfCancellationRequested();
+                var identity = GetDeviceIdentity();
+                if (!identity.IsVerifiedConfiguration)
+                {
+                    return ControlResult.Failure(
+                        $"Firmware writes are disabled for unverified configuration {identity.HardwareKey}.",
+                        _automaticRestoreRequired);
+                }
+
+                capabilities = GetCapabilities();
+                if (!capabilities.CanControlFans)
+                {
+                    return ControlResult.Failure(
+                        "This firmware does not expose the required fan-control and readback methods.",
+                        _automaticRestoreRequired);
+                }
+
+                mutationStarted = true;
+                InvokeSet("SetAutoFanStatus", 0, cancellationToken);
+                InvokeSet("SetStepFanStatus", 1, cancellationToken);
+                InvokeSet("SetFixedFanStatus", 1, cancellationToken);
+                InvokeSet("SetFixedFanSpeed", duty, cancellationToken);
+                InvokeSet("SetGPUFanDuty", duty, cancellationToken);
+                VerifyFixedMode(capabilities, duty);
+
+                _automaticRestoreRequired = true;
+                return new ControlResult(
+                    true,
+                    $"Fixed fan duty set and verified at {percent}%.",
+                    percent,
+                    percent,
+                    true);
             }
+            catch (Exception exception)
+            {
+                if (!mutationStarted || capabilities is null)
+                {
+                    return ControlResult.Failure(
+                        FormatControlFailure("Fan command", exception),
+                        _automaticRestoreRequired);
+                }
 
-            InvokeSet("SetAutoFanStatus", 0);
-            InvokeSet("SetStepFanStatus", 1);
-            InvokeSet("SetFixedFanStatus", 1);
-            InvokeSet("SetFixedFanSpeed", duty);
-            InvokeSet("SetGPUFanDuty", duty);
-
-            var reportedRaw = TryRead(capabilities, "GetFixedFanSpeed", []);
-            var reportedPercent = DecodeDuty(reportedRaw);
-            return new ControlResult(
-                true,
-                $"Fixed fan duty set to {percent}%.",
-                percent,
-                reportedPercent);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return ControlResult.Failure(
-                "Firmware write was denied. Restart AeroControl as administrator.");
-        }
-        catch (Exception exception)
-        {
-            return ControlResult.Failure($"Fan command failed: {exception.Message}");
+                var rollback = TryRestoreAutomatic(capabilities, CancellationToken.None);
+                _automaticRestoreRequired = !rollback.Succeeded;
+                return ControlResult.Failure(
+                    $"{FormatControlFailure("Fan command", exception)} {rollback.Message}",
+                    _automaticRestoreRequired);
+            }
         }
     }
 
-    private ControlResult RestoreAutomaticFanControl()
+    private ControlResult RestoreAutomaticFanControl(CancellationToken cancellationToken)
+    {
+        lock (_controlGate)
+        {
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var identity = GetDeviceIdentity();
+                if (!identity.IsVerifiedConfiguration)
+                {
+                    return ControlResult.Failure(
+                        $"Firmware writes are disabled for unverified configuration {identity.HardwareKey}.",
+                        _automaticRestoreRequired);
+                }
+
+                var capabilities = GetCapabilities();
+                if (!capabilities.CanControlFans)
+                {
+                    return ControlResult.Failure(
+                        "This firmware does not expose the required fan-control and readback methods.",
+                        _automaticRestoreRequired);
+                }
+
+                _automaticRestoreRequired = true;
+                var result = TryRestoreAutomatic(capabilities, cancellationToken);
+                _automaticRestoreRequired = !result.Succeeded;
+                return result with { RequiresAutomaticRestore = _automaticRestoreRequired };
+            }
+            catch (Exception exception)
+            {
+                return ControlResult.Failure(
+                    FormatControlFailure("Automatic mode", exception),
+                    _automaticRestoreRequired);
+            }
+        }
+    }
+
+    private ControlResult TryRestoreAutomatic(
+        HardwareCapabilities capabilities,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var capabilities = GetCapabilities();
-            if (!capabilities.CanControlFans)
-            {
-                return ControlResult.Failure(
-                    "This firmware does not expose the required fan-control methods.");
-            }
-
-            InvokeSet("SetFixedFanStatus", 0);
-            InvokeSet("SetStepFanStatus", 0);
-            InvokeSet("SetAutoFanStatus", 1);
-            return new ControlResult(true, "Automatic fan control restored.");
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return ControlResult.Failure(
-                "Firmware write was denied. Restart AeroControl as administrator.");
+            InvokeSet("SetFixedFanStatus", 0, cancellationToken);
+            InvokeSet("SetStepFanStatus", 0, cancellationToken);
+            InvokeSet("SetAutoFanStatus", 1, cancellationToken);
+            VerifyAutomaticMode(capabilities);
+            return new ControlResult(true, "Automatic fan control restored and verified.");
         }
         catch (Exception exception)
         {
-            return ControlResult.Failure($"Automatic mode failed: {exception.Message}");
+            return ControlResult.Failure(
+                $"Automatic rollback could not be verified: {exception.Message}",
+                true);
         }
+    }
+
+    private void VerifyFixedMode(HardwareCapabilities capabilities, byte duty)
+    {
+        var fixedStatus = ReadRequired(capabilities, "GetFixedFanStatus");
+        var stepStatus = ReadRequired(capabilities, "GetStepFanStatus");
+        var automaticStatus = ReadRequired(capabilities, "GetAutoFanStatus");
+        var fixedDuty = ReadRequired(capabilities, "GetFixedFanSpeed");
+        var cpuDuty = ReadRequired(capabilities, "GetCPUFanDuty");
+        var gpuDuty = ReadRequired(capabilities, "GetGPUFanDuty");
+
+        if (fixedStatus <= 0 || stepStatus <= 0 || automaticStatus != 0 ||
+            fixedDuty != duty || cpuDuty != duty || gpuDuty != duty)
+        {
+            throw new InvalidOperationException(
+                $"Fan readback mismatch (fixed={fixedStatus}, step={stepStatus}, auto={automaticStatus}, " +
+                $"fixedDuty={fixedDuty}, cpuDuty={cpuDuty}, gpuDuty={gpuDuty}, expected={duty}).");
+        }
+    }
+
+    private void VerifyAutomaticMode(HardwareCapabilities capabilities)
+    {
+        var fixedStatus = ReadRequired(capabilities, "GetFixedFanStatus");
+        var stepStatus = ReadRequired(capabilities, "GetStepFanStatus");
+        var automaticStatus = ReadRequired(capabilities, "GetAutoFanStatus");
+        if (fixedStatus != 0 || stepStatus != 0 || automaticStatus <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Automatic-mode readback mismatch (fixed={fixedStatus}, step={stepStatus}, auto={automaticStatus}).");
+        }
+    }
+
+    private int ReadRequired(HardwareCapabilities capabilities, string methodName)
+    {
+        if (!capabilities.CanGet(methodName))
+        {
+            throw new InvalidOperationException($"Required readback method {methodName} is unavailable.");
+        }
+
+        return _wmi.Invoke(FirmwareNamespace, GetClass, methodName).GetInt32("Data")
+            ?? throw new InvalidOperationException($"Required readback method {methodName} returned no data.");
     }
 
     private int? TryRead(
@@ -242,8 +343,12 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         }
     }
 
-    private void InvokeSet(string methodName, byte value)
+    private void InvokeSet(
+        string methodName,
+        byte value,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _wmi.Invoke(
             FirmwareNamespace,
             SetClass,
@@ -262,4 +367,39 @@ public sealed class GigabyteHardwareService : IAeroHardwareService
         IReadOnlyDictionary<string, object?> values,
         string name) =>
         values.TryGetValue(name, out var value) ? value?.ToString()?.Trim() ?? string.Empty : string.Empty;
+
+    private static string FormatControlFailure(string operation, Exception exception) => exception switch
+    {
+        OperationCanceledException => $"{operation} was canceled.",
+        UnauthorizedAccessException => $"{operation} was denied. Restart AeroControl as administrator.",
+        _ => $"{operation} failed: {exception.Message}"
+    };
+
+    private static bool IsVerifiedConfiguration(
+        string manufacturer,
+        string model,
+        string systemSku,
+        string biosVersion) =>
+        VerifiedConfigurations.Any(configuration => configuration.Matches(
+            manufacturer,
+            model,
+            systemSku,
+            biosVersion));
+
+    private sealed record VerifiedConfiguration(
+        string Manufacturer,
+        string Model,
+        string SystemSku,
+        string BiosVersion)
+    {
+        public bool Matches(
+            string manufacturer,
+            string model,
+            string systemSku,
+            string biosVersion) =>
+            string.Equals(Manufacturer, manufacturer, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Model, model, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(SystemSku, systemSku, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(BiosVersion, biosVersion, StringComparison.OrdinalIgnoreCase);
+    }
 }

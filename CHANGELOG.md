@@ -25,4 +25,7 @@ The project follows semantic versioning after the initial public preview.
 - Versioned hardware-risk acknowledgement
 - Demo provider and deterministic screenshot capture
 - Unit-tested WMI abstraction with no hardware writes in tests
+- Exact manufacturer/model/SKU/BIOS write allowlist
+- Full fixed/automatic readback and automatic rollback after partial failures
+- Hardware-bound risk acceptance and bounded WMI operations
 - MIT license and hardware-specific disclaimer

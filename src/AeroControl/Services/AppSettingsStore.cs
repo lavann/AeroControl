@@ -5,7 +5,7 @@ namespace AeroControl.Services;
 
 public sealed class AppSettingsStore
 {
-    public const string CurrentRiskVersion = "hardware-risk-v1";
+    public const string CurrentRiskVersion = "hardware-risk-v2";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -22,29 +22,47 @@ public sealed class AppSettingsStore
             "settings.json");
     }
 
-    public bool HasAcceptedCurrentRisk()
+    public bool HasAcceptedCurrentRisk(string hardwareKey)
     {
         var settings = Load();
         return string.Equals(
             settings.AcceptedRiskVersion,
             CurrentRiskVersion,
-            StringComparison.Ordinal);
+            StringComparison.Ordinal) &&
+            string.Equals(
+                settings.AcceptedHardwareKey,
+                hardwareKey,
+                StringComparison.OrdinalIgnoreCase);
     }
 
-    public void AcceptCurrentRisk()
+    public bool AcceptCurrentRisk(string hardwareKey)
     {
-        var directory = Path.GetDirectoryName(_settingsPath);
-        if (!string.IsNullOrWhiteSpace(directory))
+        if (string.IsNullOrWhiteSpace(hardwareKey))
         {
-            Directory.CreateDirectory(directory);
+            return false;
         }
 
-        var settings = new AppSettings(
-            CurrentRiskVersion,
-            DateTimeOffset.UtcNow);
-        File.WriteAllText(
-            _settingsPath,
-            JsonSerializer.Serialize(settings, JsonOptions));
+        try
+        {
+            var directory = Path.GetDirectoryName(_settingsPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var settings = new AppSettings(
+                CurrentRiskVersion,
+                hardwareKey,
+                DateTimeOffset.UtcNow);
+            File.WriteAllText(
+                _settingsPath,
+                JsonSerializer.Serialize(settings, JsonOptions));
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private AppSettings Load()
@@ -64,9 +82,14 @@ public sealed class AppSettingsStore
         {
             return new AppSettings();
         }
+        catch (UnauthorizedAccessException)
+        {
+            return new AppSettings();
+        }
     }
 
     private sealed record AppSettings(
         string? AcceptedRiskVersion = null,
+        string? AcceptedHardwareKey = null,
         DateTimeOffset? AcceptedAt = null);
 }

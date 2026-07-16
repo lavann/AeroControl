@@ -35,6 +35,7 @@ Read path:
 - `GetCPUFanDuty`
 - `GetGPUFanDuty`
 - `GetAutoFanStatus`
+- `GetStepFanStatus`
 - `GetFixedFanStatus`
 - `GetFixedFanSpeed`
 
@@ -62,7 +63,7 @@ When filing a model-support issue, include the model, SKU, BIOS version, Windows
 ## Support levels
 
 - **Verified:** Maintainers or contributors completed controlled write/readback testing on the exact model.
-- **Experimental:** Required methods are detected, but semantics have not been validated on that model.
+- **Read-only:** Required methods are detected, but writes remain disabled because exact manufacturer/model/SKU/BIOS semantics have not been validated.
 - **Unsupported:** Required WMI classes or methods are missing.
 
 Do not infer compatibility from branding alone. AERO and AORUS generations may use different embedded controllers, WMI schemas, or value encodings.

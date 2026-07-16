@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AeroControl.Core\AeroControl.Core.csproj" />
+    <ProjectReference Include="..\..\src\AeroControl\AeroControl.csproj" />
   </ItemGroup>
 
 </Project>

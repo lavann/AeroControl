@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -43,9 +43,20 @@ jobs:
           -p:DebugType=None
           --output artifacts/win-x64
 
+      - name: Smoke published demo
+        run: artifacts/win-x64/AeroControl.exe --demo --capture artifacts/smoke/dashboard.png
+
+      - name: Verify artifact legal files
+        shell: pwsh
+        run: |
+          if (-not (Test-Path artifacts/win-x64/LICENSE)) { throw "Published LICENSE is missing." }
+          if (-not (Test-Path artifacts/win-x64/DISCLAIMER.md)) { throw "Published DISCLAIMER.md is missing." }
+
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AeroControl-win-x64
-          path: artifacts/win-x64/
+          path: |
+            artifacts/win-x64/
+            artifacts/smoke/dashboard.png
           if-no-files-found: error

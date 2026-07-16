@@ -20,6 +20,7 @@ public sealed class DemoHardwareService : IAeroHardwareService
             "GetGPUFanDuty",
             "GetFixedFanSpeed",
             "GetAutoFanStatus",
+            "GetStepFanStatus",
             "GetFixedFanStatus"
         },
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -36,6 +37,7 @@ public sealed class DemoHardwareService : IAeroHardwareService
         Task.FromResult(new DeviceIdentity(
             "GIGABYTE",
             "AERO 15-SA",
+            "P75SA",
             "FB09",
             true,
             true));
@@ -94,7 +96,8 @@ public sealed class DemoHardwareService : IAeroHardwareService
             true,
             $"Demo fan duty set to {percent}%.",
             percent,
-            percent));
+            percent,
+            true));
     }
 
     public Task<ControlResult> RestoreAutomaticFanControlAsync(

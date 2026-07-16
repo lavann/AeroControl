@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security;
 using System.Text.Json;
 
 namespace AeroControl.Services;
@@ -13,6 +14,7 @@ public sealed class AppSettingsStore
     };
 
     private readonly string _settingsPath;
+    private readonly object _gate = new();
 
     public AppSettingsStore(string? settingsPath = null)
     {
@@ -24,15 +26,18 @@ public sealed class AppSettingsStore
 
     public bool HasAcceptedCurrentRisk(string hardwareKey)
     {
-        var settings = Load();
-        return string.Equals(
-            settings.AcceptedRiskVersion,
-            CurrentRiskVersion,
-            StringComparison.Ordinal) &&
-            string.Equals(
-                settings.AcceptedHardwareKey,
-                hardwareKey,
-                StringComparison.OrdinalIgnoreCase);
+        lock (_gate)
+        {
+            var settings = Load();
+            return string.Equals(
+                settings.AcceptedRiskVersion,
+                CurrentRiskVersion,
+                StringComparison.Ordinal) &&
+                string.Equals(
+                    settings.AcceptedHardwareKey,
+                    hardwareKey,
+                    StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public bool AcceptCurrentRisk(string hardwareKey)
@@ -42,27 +47,117 @@ public sealed class AppSettingsStore
             return false;
         }
 
+        lock (_gate)
+        {
+            using var processLock = TryAcquireWriteLock();
+            if (processLock is null)
+            {
+                return false;
+            }
+
+            var settings = Load() with
+            {
+                AcceptedRiskVersion = CurrentRiskVersion,
+                AcceptedHardwareKey = hardwareKey,
+                AcceptedAt = DateTimeOffset.UtcNow
+            };
+            return Save(settings);
+        }
+    }
+
+    public UserPreferences LoadPreferences()
+    {
+        lock (_gate)
+        {
+            return (Load().Preferences ?? UserPreferences.Default).Normalize();
+        }
+    }
+
+    public bool SavePreferences(UserPreferences preferences)
+    {
+        ArgumentNullException.ThrowIfNull(preferences);
+        lock (_gate)
+        {
+            using var processLock = TryAcquireWriteLock();
+            if (processLock is null)
+            {
+                return false;
+            }
+
+            var settings = Load() with
+            {
+                Preferences = preferences.Normalize()
+            };
+            return Save(settings);
+        }
+    }
+
+    private bool Save(AppSettings settings)
+    {
+        var directory = Path.GetDirectoryName(_settingsPath);
+        var temporaryPath = $"{_settingsPath}.{Guid.NewGuid():N}.tmp";
         try
         {
-            var directory = Path.GetDirectoryName(_settingsPath);
             if (!string.IsNullOrWhiteSpace(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
-            var settings = new AppSettings(
-                CurrentRiskVersion,
-                hardwareKey,
-                DateTimeOffset.UtcNow);
             File.WriteAllText(
-                _settingsPath,
+                temporaryPath,
                 JsonSerializer.Serialize(settings, JsonOptions));
+            File.Move(temporaryPath, _settingsPath, true);
             return true;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SecurityException)
         {
             return false;
         }
+        finally
+        {
+            try
+            {
+                File.Delete(temporaryPath);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SecurityException)
+            {
+                // A failed cleanup must not turn an already-failed settings write into a crash.
+            }
+        }
+    }
+
+    private FileStream? TryAcquireWriteLock()
+    {
+        var directory = Path.GetDirectoryName(_settingsPath);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                try
+                {
+                    return new FileStream(
+                        $"{_settingsPath}.lock",
+                        FileMode.OpenOrCreate,
+                        FileAccess.ReadWrite,
+                        FileShare.None);
+                }
+                catch (IOException) when (attempt < 19)
+                {
+                    Thread.Sleep(50);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            return null;
+        }
+
+        return null;
     }
 
     private AppSettings Load()
@@ -78,6 +173,10 @@ public sealed class AppSettingsStore
         {
             return new AppSettings();
         }
+        catch (NotSupportedException)
+        {
+            return new AppSettings();
+        }
         catch (IOException)
         {
             return new AppSettings();
@@ -86,10 +185,15 @@ public sealed class AppSettingsStore
         {
             return new AppSettings();
         }
+        catch (SecurityException)
+        {
+            return new AppSettings();
+        }
     }
 
     private sealed record AppSettings(
         string? AcceptedRiskVersion = null,
         string? AcceptedHardwareKey = null,
-        DateTimeOffset? AcceptedAt = null);
+        DateTimeOffset? AcceptedAt = null,
+        UserPreferences? Preferences = null);
 }

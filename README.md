@@ -14,9 +14,13 @@ AeroControl is a lightweight, open-source .NET desktop utility for Gigabyte AERO
 
 ![AeroControl battery health view](docs/images/battery.png)
 
+![AeroControl session monitor](docs/images/monitor.png)
+
+![AeroControl sanitized diagnostics](docs/images/diagnostics.png)
+
 ## Project status
 
-Version 0.2 is a **cooling and battery preview**, not yet a complete replacement for every Gigabyte Control Center module. Cooling remains the default launch tab; the navigation bar opens independent views as the feature set grows.
+Version 0.3 is a **cooling, battery, monitoring, and diagnostics preview**, not yet a complete replacement for every Gigabyte Control Center module. Cooling remains the default launch tab unless the user explicitly enables remembered navigation.
 
 Currently implemented:
 
@@ -28,6 +32,12 @@ Currently implemented:
 - Automatic firmware-mode restoration on exit
 - Read-only battery charge, power-state, voltage, capacity-retention, and cycle telemetry
 - Standard Windows battery APIs only; the Battery tab performs no firmware writes and requires no elevation
+- Session-only Monitor charts with explicit CSV export
+- Sanitized Diagnostics and JSON export with no serials, UUIDs, MAC addresses, usernames, or raw paths
+- Local sustained temperature/fan-stall notifications that never change hardware settings
+- Named fan profiles reusing the existing verified fan-control path
+- Per-user settings, optional notification-area behavior, and reversible sign-in startup
+- Optional per-user setup to `%LOCALAPPDATA%\AeroControl`; the portable executable remains supported
 - Runtime firmware capability discovery
 - Administrator-access detection and restart
 - Versioned, persisted hardware-risk acknowledgement before the first write
@@ -69,6 +79,22 @@ dotnet build AeroControl.sln -c Release
 dotnet run --project src/AeroControl/AeroControl.csproj -c Release
 ```
 
+## Install options
+
+The release ZIP contains:
+
+- `AeroControl.exe` for portable use
+- `AeroControl.Setup.exe` for per-user installation
+- `LICENSE` and `DISCLAIMER.md`
+
+Run `AeroControl.Setup.exe` to install the app to:
+
+```text
+%LOCALAPPDATA%\AeroControl
+```
+
+Setup does not request administrator access. Its optional **Launch AeroControl when I sign in** checkbox writes only the current-user `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\AeroControl` value. Setup can update or remove the installed payload and deletes that startup value during removal only when it points to the installed executable. App settings are stored separately under LocalAppData and are not silently deleted by setup.
+
 The app starts without forcing elevation. If the firmware provider denies access, use **Restart as administrator** inside AeroControl. Read-only UI access does not accept the hardware disclaimer; the acknowledgement is required immediately before the first write.
 
 Run without hardware access:
@@ -82,6 +108,8 @@ Regenerate the checked-in screenshot from the real WPF window:
 ```powershell
 dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --view cooling --capture docs/images/dashboard.png
 dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --view battery --capture docs/images/battery.png
+dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --view monitor --capture docs/images/monitor.png
+dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --view diagnostics --capture docs/images/diagnostics.png
 ```
 
 ## Architecture
@@ -90,6 +118,10 @@ dotnet run --project src/AeroControl/AeroControl.csproj -- --demo --view battery
 flowchart LR
     UI[WPF tab shell] --> Cooling[Cooling view]
     UI --> Battery[Battery view]
+    UI --> Monitor[Session monitor]
+    UI --> Diagnostics[Sanitized diagnostics]
+    UI --> Profiles[Saved fan profiles]
+    UI --> Settings[Per-user settings]
     Cooling --> Gate[Risk and elevation gate]
     Gate --> Contract[IAeroHardwareService]
     Contract --> Live[Gigabyte WMI provider]
@@ -104,6 +136,8 @@ flowchart LR
     BatteryContract --> PowerCfg[Structured powercfg XML report]
     Tests[Unit tests with fake bridge] --> Contract
     Tests --> BatteryContract
+    Monitor --> History[Bounded in-memory history]
+    Diagnostics --> Export[Explicit sanitized JSON export]
 ```
 
 The core library owns models, duty encoding, capability checks, and firmware sequences. The WPF project owns presentation, elevation, settings, and human acknowledgement. Tests substitute a fake bridge, so automated builds never write to hardware.
@@ -126,7 +160,6 @@ The core library owns models, duty encoding, capability checks, and firmware seq
 - Model-validated battery charge limits
 - Performance and power profiles
 - Keyboard backlight and RGB controls through documented/model-validated interfaces
-- Tray mode, startup profiles, and temperature history
 - Artifact-signed release binaries and an opt-in updater
 - Community model packs backed by readback tests and compatibility evidence
 

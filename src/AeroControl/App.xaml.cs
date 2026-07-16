@@ -5,7 +5,7 @@ using AeroControl.Services;
 
 namespace AeroControl;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -34,13 +34,22 @@ public partial class App : Application
             ? new DemoBatteryService()
             : new WindowsBatteryService();
         var settings = new AppSettingsStore();
+        var preferences = options.IsDemo && !string.IsNullOrWhiteSpace(options.CapturePath)
+            ? UserPreferences.Default
+            : settings.LoadPreferences();
+        var initialView = options.HasExplicitView
+            ? options.InitialView
+            : preferences.RememberLastView && Enum.TryParse<AppView>(preferences.LastView, true, out var rememberedView)
+                ? rememberedView
+                : AppView.Cooling;
         var window = new MainWindow(
             hardware,
             battery,
             settings,
+            preferences,
             options.IsDemo,
             options.CapturePath,
-            options.InitialView);
+            initialView);
         MainWindow = window;
         window.Show();
     }

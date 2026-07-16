@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using AeroControl.Core.Abstractions;
 using AeroControl.Services;
 using AeroControl.ViewModels;
+using WpfSaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace AeroControl;
 
@@ -16,6 +17,9 @@ public partial class MainWindow : Window, IDisposable
 {
     private readonly MainViewModel _viewModel;
     private readonly AppSettingsStore _settings;
+    private readonly StartupRegistrationService _startup = new();
+    private readonly TrayIconService _tray = new();
+    private readonly Core.Services.AlertEvaluator _alerts = new();
     private readonly bool _isDemo;
     private readonly bool _isElevated;
     private readonly string? _capturePath;
@@ -28,11 +32,13 @@ public partial class MainWindow : Window, IDisposable
     private bool _disposed;
     private bool _demoRiskAccepted;
     private Task<Core.Models.ControlResult>? _activeControlTask;
+    private UserPreferences _persistedPreferences;
 
     internal MainWindow(
         IAeroHardwareService hardware,
         IBatteryService battery,
         AppSettingsStore settings,
+        UserPreferences preferences,
         bool isDemo,
         string? capturePath,
         AppView initialView)
@@ -43,13 +49,34 @@ public partial class MainWindow : Window, IDisposable
         _isElevated = ElevationService.IsAdministrator();
         _capturePath = capturePath;
         _initialView = initialView;
-        _viewModel = new MainViewModel(hardware, battery, isDemo, _isElevated);
+        var startupEnabled = string.IsNullOrWhiteSpace(capturePath) &&
+            _startup.IsEnabled(Environment.ProcessPath ?? string.Empty);
+        _persistedPreferences = preferences.Normalize() with
+        {
+            StartWithWindows = startupEnabled
+        };
+        _viewModel = new MainViewModel(
+            hardware,
+            battery,
+            new Core.Services.TelemetryHistory(),
+            new DiagnosticsService(
+                hardware,
+                processInventory: string.IsNullOrWhiteSpace(capturePath) ? null : () => []),
+            _persistedPreferences,
+            isDemo,
+            _isElevated);
         DataContext = _viewModel;
         _refreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(2)
+            Interval = TimeSpan.FromSeconds(_persistedPreferences.RefreshIntervalSeconds)
         };
         _refreshTimer.Tick += RefreshTimer_Tick;
+        _viewModel.HardwareSnapshotUpdated += ViewModel_HardwareSnapshotUpdated;
+        _tray.OpenRequested += Tray_OpenRequested;
+        _tray.ExitRequested += Tray_ExitRequested;
+        _tray.SetVisible(
+            string.IsNullOrWhiteSpace(_capturePath) &&
+            (_persistedPreferences.MinimizeToTray || _persistedPreferences.EnableNotifications));
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -82,6 +109,41 @@ public partial class MainWindow : Window, IDisposable
         }
     }
 
+    private async void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || !ReferenceEquals(e.OriginalSource, MainTabs))
+        {
+            return;
+        }
+
+        var view = (AppView)Math.Clamp(MainTabs.SelectedIndex, 0, Enum.GetValues<AppView>().Length - 1);
+        _viewModel.Settings.LastView = view.ToString();
+        if (view == AppView.Monitor)
+        {
+            _viewModel.UpdateMonitorWindow();
+        }
+        else if (view == AppView.Diagnostics)
+        {
+            try
+            {
+                await _viewModel.RefreshDiagnosticsAsync(_shutdown.Token);
+            }
+            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+            {
+                return;
+            }
+        }
+
+        if (_persistedPreferences.RememberLastView && string.IsNullOrWhiteSpace(_capturePath))
+        {
+            var preferences = _persistedPreferences with { LastView = view.ToString() };
+            if (_settings.SavePreferences(preferences))
+            {
+                _persistedPreferences = preferences.Normalize();
+            }
+        }
+    }
+
     private async void RefreshTimer_Tick(object? sender, EventArgs e)
     {
         try
@@ -91,6 +153,243 @@ public partial class MainWindow : Window, IDisposable
         catch (OperationCanceledException)
         {
             // The window is shutting down.
+        }
+    }
+
+    private void ViewModel_HardwareSnapshotUpdated(Core.Models.HardwareSnapshot snapshot)
+    {
+        if (!_viewModel.Settings.EnableNotifications)
+        {
+            _alerts.Reset();
+            return;
+        }
+
+        var thresholds = new Core.Models.AlertThresholds(
+            _viewModel.Settings.CpuAlertCelsius,
+            _viewModel.Settings.GpuAlertCelsius,
+            _viewModel.Settings.EnableFanStallAlert);
+        foreach (var alert in _alerts.Evaluate(snapshot, thresholds))
+        {
+            _tray.SetVisible(true);
+            _tray.ShowAlert(alert.Title, alert.Message);
+        }
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized && _viewModel.Settings.MinimizeToTray)
+        {
+            Hide();
+            _tray.SetVisible(true);
+        }
+    }
+
+    private void Tray_OpenRequested(object? sender, EventArgs e)
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void Tray_ExitRequested(object? sender, EventArgs e)
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Close();
+    }
+
+    private void ExportHistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new WpfSaveFileDialog
+        {
+            Title = "Export AeroControl session history",
+            Filter = "CSV files (*.csv)|*.csv",
+            FileName = $"AeroControl-history-{DateTime.Now:yyyyMMdd-HHmm}.csv",
+            AddExtension = true,
+            DefaultExt = ".csv"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        TryWriteExport(dialog.FileName, _viewModel.GetHistoryCsv(), "History export");
+    }
+
+    private async void RefreshDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await _viewModel.RefreshDiagnosticsAsync(_shutdown.Token);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            // Normal shutdown.
+        }
+    }
+
+    private async void ExportDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new WpfSaveFileDialog
+        {
+            Title = "Export sanitized AeroControl diagnostics",
+            Filter = "JSON files (*.json)|*.json",
+            FileName = $"AeroControl-diagnostics-{DateTime.Now:yyyyMMdd-HHmm}.json",
+            AddExtension = true,
+            DefaultExt = ".json"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            TryWriteExport(
+                dialog.FileName,
+                await _viewModel.GetDiagnosticsJsonAsync(_shutdown.Token),
+                "Diagnostics export");
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            // Normal shutdown.
+        }
+    }
+
+    private async void ApplyProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.IsBusy || _activeControlTask is not null)
+        {
+            ProfilesStatusText.Text = "A fan command is already running.";
+            return;
+        }
+
+        if (ProfilesList.SelectedItem is not FanProfile profile || !EnsureWriteAccess())
+        {
+            ProfilesStatusText.Text = "Select a profile before applying it.";
+            return;
+        }
+
+        var result = await TrackControlAsync(
+            _viewModel.SetFanPercentAsync(profile.Percent, _shutdown.Token));
+        ProfilesStatusText.Text = result.Message;
+    }
+
+    private void AddProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_viewModel.Settings.AddProfile(
+                ProfileNameTextBox.Text,
+                (int)Math.Round(ProfilePercentSlider.Value)))
+        {
+            ProfilesStatusText.Text = "Use a unique non-empty profile name (maximum 12 profiles).";
+            return;
+        }
+
+        ProfileNameTextBox.Clear();
+        PersistProfiles("Profile saved.");
+    }
+
+    private void DeleteProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ProfilesList.SelectedItem is not FanProfile profile ||
+            !_viewModel.Settings.RemoveProfile(profile))
+        {
+            ProfilesStatusText.Text = "Select a profile to delete.";
+            return;
+        }
+
+        PersistProfiles("Profile deleted.");
+    }
+
+    private void ProfilePercentSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (ProfilePercentLabel is not null)
+        {
+            ProfilePercentLabel.Text = $"{Math.Round(e.NewValue):0}%";
+        }
+    }
+
+    private void SaveSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.Settings.LastView = ((AppView)Math.Clamp(
+            MainTabs.SelectedIndex,
+            0,
+            Enum.GetValues<AppView>().Length - 1)).ToString();
+        var preferences = _viewModel.Settings.ToPreferences();
+        var executable = Environment.ProcessPath ?? string.Empty;
+        if (!_startup.TryGetState(out var previousStartup))
+        {
+            RejectSettingsSave("Windows startup registration could not be read; settings were not saved.");
+            return;
+        }
+
+        if (!_startup.SetEnabled(preferences.StartWithWindows, executable))
+        {
+            var restored = _startup.Restore(previousStartup);
+            RejectSettingsSave(restored
+                ? "Windows startup registration could not be verified; the prior command was restored and settings were not saved."
+                : "Windows startup registration failed and its prior command could not be restored. Review the Windows startup setting.");
+            return;
+        }
+
+        if (!_settings.SavePreferences(preferences))
+        {
+            var restored = _startup.Restore(previousStartup);
+            RejectSettingsSave(restored
+                ? "Settings could not be written; startup registration was restored."
+                : "Settings could not be written, and startup registration could not be restored. Review the Windows startup setting.");
+            return;
+        }
+
+        _persistedPreferences = preferences;
+        _viewModel.Settings.Apply(preferences);
+        _refreshTimer.Interval = TimeSpan.FromSeconds(preferences.RefreshIntervalSeconds);
+        RestoreAutomaticOnExitCheckBox.IsChecked = preferences.RestoreAutomaticOnExit;
+        _tray.SetVisible(preferences.MinimizeToTray || preferences.EnableNotifications);
+        _viewModel.UpdateMonitorWindow();
+        SettingsStatusText.Text = "Settings saved for this Windows user.";
+    }
+
+    private void RejectSettingsSave(string message)
+    {
+        _viewModel.Settings.Apply(_persistedPreferences);
+        SettingsStatusText.Text = message;
+    }
+
+    private void PersistProfiles(string successMessage)
+    {
+        if (_isDemo && !string.IsNullOrWhiteSpace(_capturePath))
+        {
+            ProfilesStatusText.Text = successMessage;
+            return;
+        }
+
+        var preferences = (_persistedPreferences with
+        {
+            FanProfiles = _viewModel.Settings.FanProfiles.ToArray()
+        }).Normalize();
+        if (_settings.SavePreferences(preferences))
+        {
+            _persistedPreferences = preferences;
+            _viewModel.Settings.ReplaceProfiles(preferences.FanProfiles);
+            ProfilesStatusText.Text = successMessage;
+        }
+        else
+        {
+            ProfilesStatusText.Text = "Profile changed in this session but could not be saved.";
+        }
+    }
+
+    private void TryWriteExport(string path, string content, string title)
+    {
+        try
+        {
+            File.WriteAllText(path, content);
+            MessageBox.Show(this, $"Saved to:\n{path}", title, MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, exception.Message, $"{title} failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -286,7 +585,7 @@ public partial class MainWindow : Window, IDisposable
             _activeControlTask = null;
         }
 
-        if (_automaticRestoreRequired && RestoreAutomaticOnExitCheckBox.IsChecked == true)
+        if (_automaticRestoreRequired && _persistedPreferences.RestoreAutomaticOnExit)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             Core.Models.ControlResult result;
@@ -403,6 +702,8 @@ public partial class MainWindow : Window, IDisposable
 
         _disposed = true;
         _refreshTimer.Stop();
+        _viewModel.HardwareSnapshotUpdated -= ViewModel_HardwareSnapshotUpdated;
+        _tray.Dispose();
         _shutdown.Cancel();
         _shutdown.Dispose();
         _viewModel.Dispose();

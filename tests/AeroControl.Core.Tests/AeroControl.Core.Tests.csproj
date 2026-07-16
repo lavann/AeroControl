@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\AeroControl.Core\AeroControl.Core.csproj" />
     <ProjectReference Include="..\..\src\AeroControl\AeroControl.csproj" />
+    <ProjectReference Include="..\..\src\AeroControl.Setup\AeroControl.Setup.csproj" />
   </ItemGroup>
 
 </Project>

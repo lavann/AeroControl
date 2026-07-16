@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AeroControl.Core", "src\Aer
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AeroControl.Core.Tests", "tests\AeroControl.Core.Tests\AeroControl.Core.Tests.csproj", "{43A1279F-4760-4447-BB98-96B22CE1FC00}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AeroControl.Setup", "src\AeroControl.Setup\AeroControl.Setup.csproj", "{A4EE6BB9-8319-4683-B473-7B0DF75F7973}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,6 +59,18 @@ Global
 		{43A1279F-4760-4447-BB98-96B22CE1FC00}.Release|x64.Build.0 = Release|Any CPU
 		{43A1279F-4760-4447-BB98-96B22CE1FC00}.Release|x86.ActiveCfg = Release|Any CPU
 		{43A1279F-4760-4447-BB98-96B22CE1FC00}.Release|x86.Build.0 = Release|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Debug|x64.Build.0 = Debug|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Debug|x86.Build.0 = Debug|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Release|x64.ActiveCfg = Release|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Release|x64.Build.0 = Release|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Release|x86.ActiveCfg = Release|Any CPU
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -65,5 +79,6 @@ Global
 		{00F2213B-CA82-4C3D-A246-3F977CC20660} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{4EC11405-0A4A-4A8D-9A00-E9748363D4F1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{43A1279F-4760-4447-BB98-96B22CE1FC00} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A4EE6BB9-8319-4683-B473-7B0DF75F7973} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

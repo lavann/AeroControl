@@ -43,24 +43,106 @@ jobs:
           -p:DebugType=None
           --output artifacts/win-x64
 
+      - name: Publish per-user setup
+        run: >-
+          dotnet publish src/AeroControl.Setup/AeroControl.Setup.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -p:DebugType=None
+          --output artifacts/setup
+
+      - name: Assemble release bundle
+        shell: pwsh
+        run: Copy-Item artifacts/setup/AeroControl.Setup.exe artifacts/win-x64/AeroControl.Setup.exe
+
+      - name: Verify per-user install lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:RUNNER_TEMP 'AeroControl'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $runKeySubPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
+          $previousStartupExists = $false
+          $previousStartup = $null
+          $previousStartupKind = $null
+          $registryKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($runKeySubPath, $false)
+          try {
+            if ($null -ne $registryKey -and $registryKey.GetValueNames() -contains 'AeroControl') {
+              $previousStartupExists = $true
+              $previousStartup = $registryKey.GetValue(
+                'AeroControl',
+                $null,
+                [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+              $previousStartupKind = $registryKey.GetValueKind('AeroControl')
+            }
+          } finally {
+            if ($null -ne $registryKey) { $registryKey.Dispose() }
+          }
+          $env:AEROCONTROL_SETUP_ROOT = $installRoot
+          try {
+            $install = Start-Process -FilePath artifacts/win-x64/AeroControl.Setup.exe -ArgumentList @('--install', '--startup') -Wait -PassThru
+            if ($install.ExitCode -ne 0) { throw "Setup install failed with exit code $($install.ExitCode)." }
+            foreach ($payload in 'AeroControl.exe', 'LICENSE', 'DISCLAIMER.md') {
+              if (-not (Test-Path (Join-Path $installRoot $payload))) { throw "Installed payload is missing: $payload" }
+            }
+            $expectedStartup = '"' + (Join-Path $installRoot 'AeroControl.exe') + '"'
+            $installedStartup = (Get-ItemProperty -Path $runKey -Name AeroControl -ErrorAction Stop).AeroControl
+            if ($installedStartup -ne $expectedStartup) { throw 'Setup did not register the exact installed executable for startup.' }
+            Set-Content -Path (Join-Path $installRoot 'settings.json') -Value 'ci-settings-marker'
+            $installedApp = Start-Process -FilePath (Join-Path $installRoot 'AeroControl.exe') -ArgumentList @(
+              '--demo', '--view', 'settings', '--capture', 'artifacts/smoke/installed.png'
+            ) -Wait -PassThru
+            if ($installedApp.ExitCode -ne 0) { throw "Installed app smoke failed with exit code $($installedApp.ExitCode)." }
+            $update = Start-Process -FilePath artifacts/win-x64/AeroControl.Setup.exe -ArgumentList @('--install', '--startup') -Wait -PassThru
+            if ($update.ExitCode -ne 0) { throw "Setup update failed with exit code $($update.ExitCode)." }
+            if ((Get-Content (Join-Path $installRoot 'settings.json') -Raw).Trim() -ne 'ci-settings-marker') {
+              throw 'Setup update did not preserve user settings.'
+            }
+            $uninstall = Start-Process -FilePath artifacts/win-x64/AeroControl.Setup.exe -ArgumentList '--uninstall' -Wait -PassThru
+            if ($uninstall.ExitCode -ne 0) { throw "Setup uninstall failed with exit code $($uninstall.ExitCode)." }
+            if (Test-Path (Join-Path $installRoot 'AeroControl.exe')) { throw 'Installed executable remains after uninstall.' }
+            if ((Get-ItemProperty -Path $runKey -Name AeroControl -ErrorAction SilentlyContinue).AeroControl) {
+              throw 'AeroControl startup value remains after uninstall.'
+            }
+          } finally {
+            Remove-Item Env:AEROCONTROL_SETUP_ROOT -ErrorAction SilentlyContinue
+            if ($previousStartupExists) {
+              $registryKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($runKeySubPath, $true)
+              try {
+                $registryKey.SetValue('AeroControl', $previousStartup, $previousStartupKind)
+              } finally {
+                $registryKey.Dispose()
+              }
+            } else {
+              Remove-ItemProperty -Path $runKey -Name AeroControl -ErrorAction SilentlyContinue
+            }
+          }
+
       - name: Smoke published demo
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $coolingProcess = Start-Process -FilePath artifacts/win-x64/AeroControl.exe -ArgumentList @(
-            '--demo', '--view', 'cooling', '--capture', 'artifacts/smoke/cooling.png'
-          ) -Wait -PassThru
-          if ($coolingProcess.ExitCode -ne 0) { throw "Cooling view smoke failed with exit code $($coolingProcess.ExitCode)." }
-          $batteryProcess = Start-Process -FilePath artifacts/win-x64/AeroControl.exe -ArgumentList @(
-            '--demo', '--view', 'battery', '--capture', 'artifacts/smoke/battery.png'
-          ) -Wait -PassThru
-          if ($batteryProcess.ExitCode -ne 0) { throw "Battery view smoke failed with exit code $($batteryProcess.ExitCode)." }
-          foreach ($image in 'artifacts/smoke/cooling.png', 'artifacts/smoke/battery.png') {
+          $views = 'cooling', 'battery', 'monitor', 'diagnostics', 'profiles', 'settings'
+          foreach ($view in $views) {
+            $image = "artifacts/smoke/$view.png"
+            $process = Start-Process -FilePath artifacts/win-x64/AeroControl.exe -ArgumentList @(
+              '--demo', '--view', $view, '--capture', $image
+            ) -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "$view view smoke failed with exit code $($process.ExitCode)." }
             if (-not (Test-Path $image)) { throw "Missing smoke image: $image" }
             if ((Get-Item $image).Length -lt 10000) { throw "Smoke image is unexpectedly small: $image" }
           }
-          if ((Get-FileHash artifacts/smoke/cooling.png).Hash -eq (Get-FileHash artifacts/smoke/battery.png).Hash) {
-            throw 'Cooling and Battery smoke images are identical.'
+          if (($views | ForEach-Object { (Get-FileHash "artifacts/smoke/$_.png").Hash } | Select-Object -Unique).Count -ne $views.Count) {
+            throw 'One or more view smoke images are identical.'
+          }
+          $setupProcess = Start-Process -FilePath artifacts/win-x64/AeroControl.Setup.exe -ArgumentList @(
+            '--capture', 'artifacts/smoke/setup.png'
+          ) -Wait -PassThru
+          if ($setupProcess.ExitCode -ne 0) { throw "Setup smoke failed with exit code $($setupProcess.ExitCode)." }
+          if (-not (Test-Path artifacts/smoke/setup.png) -or (Get-Item artifacts/smoke/setup.png).Length -lt 10000) {
+            throw 'Setup smoke image is missing or unexpectedly small.'
           }
           Add-Type -AssemblyName System.Drawing
           function Get-AccentCount([System.Drawing.Bitmap]$bitmap, [int]$startX, [int]$endX) {
@@ -112,6 +194,7 @@ jobs:
         run: |
           if (-not (Test-Path artifacts/win-x64/LICENSE)) { throw "Published LICENSE is missing." }
           if (-not (Test-Path artifacts/win-x64/DISCLAIMER.md)) { throw "Published DISCLAIMER.md is missing." }
+          if (-not (Test-Path artifacts/win-x64/AeroControl.Setup.exe)) { throw "Published per-user setup is missing." }
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7

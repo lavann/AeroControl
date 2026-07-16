@@ -1,6 +1,7 @@
 ﻿<Window x:Class="AeroControl.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:AeroControl.Controls"
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
         Title="AeroControl"
         Width="1180"
@@ -11,6 +12,7 @@
         Background="{StaticResource SurfaceBrush}"
         FontFamily="Segoe UI Variable Text"
         Loaded="Window_Loaded"
+        StateChanged="Window_StateChanged"
         Closing="Window_Closing">
     <Grid x:Name="RootGrid" Background="{StaticResource SurfaceBrush}">
         <Grid.RowDefinitions>
@@ -80,6 +82,7 @@
         <TabControl x:Name="MainTabs"
                 Grid.Row="1"
                 SelectedIndex="0"
+            SelectionChanged="MainTabs_SelectionChanged"
                 Style="{StaticResource NavigationTabControlStyle}">
             <TabItem Header="Cooling" Style="{StaticResource NavigationTabItemStyle}">
             <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -352,7 +355,7 @@
                             <CheckBox x:Name="RestoreAutomaticOnExitCheckBox"
                                       Grid.Row="4"
                                       Margin="0,24,0,0"
-                                      IsChecked="True"
+                                      IsChecked="{Binding Settings.RestoreAutomaticOnExit}"
                                       Content="Restore automatic fan control when AeroControl exits"
                                       FontSize="12"
                                       Foreground="{StaticResource MutedInkBrush}" />
@@ -714,6 +717,358 @@
                                        TextWrapping="Wrap"
                                        FontSize="12"
                                        Foreground="{StaticResource InkBrush}" />
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Monitor" Style="{StaticResource NavigationTabItemStyle}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="32,26,32,28">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Session monitor"
+                                           FontFamily="Bahnschrift"
+                                           FontSize="29"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource InkBrush}" />
+                                <TextBlock Margin="0,5,0,0"
+                                           Text="{Binding MonitorSummary}"
+                                           FontSize="12"
+                                           Foreground="{StaticResource MutedInkBrush}" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="Export CSV"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="ExportHistoryButton_Click" />
+                        </Grid>
+
+                        <Border Grid.Row="1" Margin="0,20,0,0" Style="{StaticResource PanelCardStyle}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Temperature history"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="19"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1" Text="CPU  /  GPU" Foreground="{StaticResource MutedInkBrush}" />
+                                </Grid>
+                                <controls:TelemetryChart Height="180"
+                                                         Margin="0,14,0,0"
+                                                         AutomationProperties.Name="CPU and GPU temperature history"
+                                                         Minimum="30"
+                                                         Maximum="105"
+                                                         Series1="{Binding CpuHistory}"
+                                                         Series2="{Binding GpuHistory}"
+                                                         Series1Brush="{StaticResource DangerBrush}"
+                                                         Series2Brush="{StaticResource CoolBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Grid Grid.Row="2" Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Margin="0,0,9,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Fan speed history"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="19"
+                                               FontWeight="SemiBold" />
+                                    <controls:TelemetryChart Height="170"
+                                                             Margin="0,14,0,0"
+                                                             AutomationProperties.Name="Fan 1 and Fan 2 speed history"
+                                                             Minimum="0"
+                                                             Maximum="6500"
+                                                             Series1="{Binding Fan1History}"
+                                                             Series2="{Binding Fan2History}"
+                                                             Series1Brush="{StaticResource AccentBrush}"
+                                                             Series2Brush="{StaticResource WarningBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Margin="9,0,0,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Battery history (charge % / absolute power W)"
+                                               FontFamily="Bahnschrift"
+                                               FontSize="19"
+                                               FontWeight="SemiBold" />
+                                    <controls:TelemetryChart Height="170"
+                                                             Margin="0,14,0,0"
+                                                             AutomationProperties.Name="Battery charge and power history"
+                                                             Minimum="0"
+                                                             Maximum="100"
+                                                             Series1="{Binding BatteryHistory}"
+                                                             Series2="{Binding PowerHistory}"
+                                                             Series1Brush="{StaticResource AccentBrush}"
+                                                             Series2Brush="{StaticResource CoolBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Grid.Row="3"
+                                Margin="0,18,0,0"
+                                Padding="16,12"
+                                Background="#E8EFEB"
+                                BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                            <TextBlock Text="History is held in memory for this session only. Export is explicit and contains telemetry columns only."
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource InkBrush}" />
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Diagnostics" Style="{StaticResource NavigationTabItemStyle}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="32,26,32,28">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Diagnostics"
+                                           FontFamily="Bahnschrift"
+                                           FontSize="29"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,5,0,0"
+                                           Text="Sanitized compatibility data; no serials or personal identifiers"
+                                           Foreground="{StaticResource MutedInkBrush}" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Margin="0,0,10,0"
+                                    Content="Refresh"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="RefreshDiagnosticsButton_Click" />
+                            <Button Grid.Column="2"
+                                    Content="Export JSON"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Click="ExportDiagnosticsButton_Click" />
+                        </Grid>
+
+                        <Grid Grid.Row="1" Margin="0,20,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Margin="0,0,9,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Device and firmware" FontFamily="Bahnschrift" FontSize="19" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,14,0,0" Text="{Binding DiagnosticsDevice}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,12,0,0" Text="Known competing tools" Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock Margin="0,4,0,0" Text="{Binding DiagnosticsConflicts}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Margin="9,0,0,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Software and trust" FontFamily="Bahnschrift" FontSize="19" FontWeight="SemiBold" />
+                                    <TextBlock Margin="0,14,0,0" Text="{Binding DiagnosticsSoftware}" TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,12,0,0" Text="Signature and hash" Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock Margin="0,4,0,0" Text="{Binding DiagnosticsSignature}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Grid Grid.Row="2" Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Margin="0,0,9,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Firmware read methods" FontFamily="Bahnschrift" FontSize="19" FontWeight="SemiBold" />
+                                    <TextBox Margin="0,12,0,0"
+                                             Height="150"
+                                             Text="{Binding DiagnosticsReadMethods, Mode=OneWay}"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             VerticalScrollBarVisibility="Auto" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Margin="9,0,0,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Firmware write methods" FontFamily="Bahnschrift" FontSize="19" FontWeight="SemiBold" />
+                                    <TextBox Margin="0,12,0,0"
+                                             Height="150"
+                                             Text="{Binding DiagnosticsWriteMethods, Mode=OneWay}"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             VerticalScrollBarVisibility="Auto" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Grid.Row="3" Margin="0,18,0,0" Padding="16,12" Background="#E8EFEB" CornerRadius="4">
+                            <TextBlock Text="{Binding DiagnosticsStatus}" TextWrapping="Wrap" />
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Profiles" Style="{StaticResource NavigationTabItemStyle}">
+                <Grid Margin="32,26,32,28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Fan profiles" FontFamily="Bahnschrift" FontSize="29" FontWeight="SemiBold" />
+                        <TextBlock Margin="0,5,0,0"
+                                   Text="Saved names reuse the existing verified fixed-duty path; no new firmware commands"
+                                   Foreground="{StaticResource MutedInkBrush}" />
+                    </StackPanel>
+                    <Grid Grid.Row="1" Margin="0,20,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="2*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Margin="0,0,9,0" Style="{StaticResource PanelCardStyle}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <ListBox x:Name="ProfilesList"
+                                         ItemsSource="{Binding Settings.FanProfiles}"
+                                         HorizontalContentAlignment="Stretch">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="6" MinHeight="38">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Percent, StringFormat={}{0}%}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <Grid Grid.Row="1" Margin="0,16,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                        <Button Margin="0,0,5,0"
+                                            Content="Apply selected"
+                                            IsEnabled="{Binding CanControlFans}"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Click="ApplyProfileButton_Click" />
+                                    <Button Grid.Column="1" Margin="5,0,0,0" Content="Delete selected" Style="{StaticResource SecondaryButtonStyle}" Click="DeleteProfileButton_Click" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Column="1" Margin="9,0,0,0" Style="{StaticResource PanelCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Create profile" FontFamily="Bahnschrift" FontSize="20" FontWeight="SemiBold" />
+                                <TextBlock Margin="0,18,0,5" Text="Name" Foreground="{StaticResource MutedInkBrush}" />
+                                <TextBox x:Name="ProfileNameTextBox" MaxLength="32" />
+                                <Grid Margin="0,20,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Fixed duty" Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBlock x:Name="ProfilePercentLabel" Grid.Column="1" Text="80%" FontWeight="SemiBold" />
+                                </Grid>
+                                <Slider x:Name="ProfilePercentSlider"
+                                        Margin="0,8,0,0"
+                                        AutomationProperties.Name="New profile fixed fan duty percentage"
+                                        Minimum="30"
+                                        Maximum="100"
+                                        Value="80"
+                                        TickFrequency="5"
+                                        IsSnapToTickEnabled="True"
+                                        ValueChanged="ProfilePercentSlider_ValueChanged" />
+                                <Button Margin="0,24,0,0" Content="Add profile" Style="{StaticResource PrimaryButtonStyle}" Click="AddProfileButton_Click" />
+                                <TextBlock x:Name="ProfilesStatusText" Margin="0,14,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedInkBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Settings" Style="{StaticResource NavigationTabItemStyle}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="32,26,32,28">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Settings" FontFamily="Bahnschrift" FontSize="29" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,5,0,0" Text="Per-user, reversible Windows and notification preferences" Foreground="{StaticResource MutedInkBrush}" />
+                        </StackPanel>
+
+                        <Grid Grid.Row="1" Margin="0,20,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Margin="0,0,9,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Windows and navigation" FontFamily="Bahnschrift" FontSize="20" FontWeight="SemiBold" />
+                                    <CheckBox Margin="0,18,0,0" Content="Launch AeroControl when I sign in" IsChecked="{Binding Settings.StartWithWindows}" />
+                                    <CheckBox Margin="0,12,0,0" Content="Minimize to the notification area" IsChecked="{Binding Settings.MinimizeToTray}" />
+                                    <CheckBox Margin="0,12,0,0" Content="Remember the last selected view" IsChecked="{Binding Settings.RememberLastView}" />
+                                    <CheckBox Margin="0,12,0,0" Content="Restore automatic fan control on exit" IsChecked="{Binding Settings.RestoreAutomaticOnExit}" />
+                                    <TextBlock Margin="0,22,0,5" Text="Refresh interval (seconds)" Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBox Text="{Binding Settings.RefreshIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Margin="0,16,0,5" Text="Monitor history window (5, 15, 30, or 60 minutes)" Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBox Text="{Binding Settings.HistoryMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="1" Margin="9,0,0,0" Style="{StaticResource PanelCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Notifications" FontFamily="Bahnschrift" FontSize="20" FontWeight="SemiBold" />
+                                    <CheckBox Margin="0,18,0,0" Content="Enable local temperature and fan alerts" IsChecked="{Binding Settings.EnableNotifications}" />
+                                    <CheckBox Margin="0,12,0,0" Content="Enable fixed-mode fan stall alerts" IsChecked="{Binding Settings.EnableFanStallAlert}" />
+                                    <TextBlock Margin="0,22,0,5" Text="CPU alert threshold (70-100 C)" Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBox Text="{Binding Settings.CpuAlertCelsius, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Margin="0,16,0,5" Text="GPU alert threshold (65-100 C)" Foreground="{StaticResource MutedInkBrush}" />
+                                    <TextBox Text="{Binding Settings.GpuAlertCelsius, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Margin="0,22,0,0"
+                                               Text="Alerts require three consecutive abnormal samples and never change hardware settings."
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource MutedInkBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Grid.Row="2" Margin="0,18,0,0" Padding="16,12" Background="#E8EFEB" CornerRadius="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="SettingsStatusText" Text="Settings are stored under LocalAppData for this Windows user." VerticalAlignment="Center" TextWrapping="Wrap" />
+                                <Button Grid.Column="1" Margin="16,0,0,0" Content="Save settings" Style="{StaticResource PrimaryButtonStyle}" Click="SaveSettingsButton_Click" />
+                            </Grid>
                         </Border>
                     </Grid>
                 </ScrollViewer>

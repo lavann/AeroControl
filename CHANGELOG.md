@@ -11,6 +11,19 @@ The project follows semantic versioning after the initial public preview.
 - Community compatibility reports
 - Additional model-validated device controls
 
+## [0.3.0] - 2026-07-16
+
+### Added
+
+- Session-only Monitor charts for temperatures, dual-fan RPM, battery charge, and power flow
+- Explicit CSV telemetry export with bounded, non-personal columns
+- Sanitized Diagnostics view and JSON export for compatibility support
+- Notification-area icon, sustained temperature alerts, and fixed-mode fan-stall warnings
+- Per-user persistent settings for refresh/history, alerts, remembered view, tray behavior, and restore-on-exit
+- Named fan profiles that reuse the existing verified fixed-duty command path
+- Per-user setup executable targeting `%LOCALAPPDATA%\AeroControl`
+- Reversible current-user sign-in startup option through `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+
 ## [0.2.0] - 2026-07-16
 
 ### Added

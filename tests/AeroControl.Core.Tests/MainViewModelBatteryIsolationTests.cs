@@ -1,6 +1,7 @@
 using AeroControl.Core.Abstractions;
 using AeroControl.Core.Models;
 using AeroControl.Core.Services;
+using AeroControl.Services;
 using AeroControl.ViewModels;
 
 namespace AeroControl.Core.Tests;
@@ -85,6 +86,63 @@ public sealed class MainViewModelBatteryIsolationTests
         Assert.Equal("FIXED", viewModel.FanMode);
     }
 
+    [Fact]
+    public async Task OverlappingRefresh_DoesNotRecordDuplicateStaleHistory()
+    {
+        var hardware = new SequencedHardwareService();
+        var battery = new ControlledBatteryService();
+        var history = new TelemetryHistory();
+        using var viewModel = new MainViewModel(
+            hardware,
+            battery,
+            history,
+            new DiagnosticsService(
+                hardware,
+                typeof(MainViewModelBatteryIsolationTests).Assembly.Location,
+                () => []),
+            UserPreferences.Default,
+            true,
+            false);
+
+        var firstRefresh = viewModel.RefreshAsync();
+        await Task.WhenAll(hardware.FirstCallStarted.Task, battery.Started.Task)
+            .WaitAsync(TimeSpan.FromSeconds(1));
+        await viewModel.RefreshAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Empty(history.GetRecent(15));
+
+        hardware.FirstSnapshot.SetResult(CreateHardwareSnapshot(
+            FanControlMode.Automatic,
+            3000,
+            2950,
+            null));
+        battery.Complete(BatterySnapshot.Unavailable("No battery."));
+        await firstRefresh.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Single(history.GetRecent(15));
+    }
+
+    [Fact]
+    public async Task ConcurrentFanCommand_IsRejectedWithoutStartingSecondWrite()
+    {
+        var hardware = new BlockingControlHardwareService();
+        using var viewModel = new MainViewModel(
+            hardware,
+            new FakeBatteryService(),
+            true,
+            false);
+
+        var first = viewModel.SetFanPercentAsync(80);
+        await hardware.CommandStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var second = await viewModel.SetFanPercentAsync(100);
+
+        Assert.False(second.Succeeded);
+        Assert.Contains("already running", second.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, hardware.SetCalls);
+
+        hardware.CompleteCommand();
+        Assert.True((await first).Succeeded);
+    }
+
     private sealed class ThrowingBatteryService : IBatteryService
     {
         public Task<BatterySnapshot> GetSnapshotAsync(
@@ -93,6 +151,52 @@ public sealed class MainViewModelBatteryIsolationTests
                 new InvalidOperationException("Injected battery failure."));
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class FakeBatteryService : IBatteryService
+    {
+        public Task<BatterySnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(BatterySnapshot.Unavailable("No battery."));
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class BlockingControlHardwareService : IAeroHardwareService
+    {
+        private readonly TaskCompletionSource<ControlResult> _command = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource CommandStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int SetCalls { get; private set; }
+
+        public Task<DeviceIdentity> GetDeviceIdentityAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<HardwareCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<HardwareSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(HardwareSnapshot.Unavailable("No sample."));
+
+        public Task<ControlResult> SetFixedFanPercentAsync(
+            int percent,
+            CancellationToken cancellationToken = default)
+        {
+            SetCalls++;
+            CommandStarted.TrySetResult();
+            return _command.Task.WaitAsync(cancellationToken);
+        }
+
+        public Task<ControlResult> RestoreAutomaticFanControlAsync(
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public void CompleteCommand()
+        {
+            _command.TrySetResult(new ControlResult(true, "Fixed mode set.", 80, 80, true));
+        }
     }
 
     private sealed class BlockingBatteryService : IBatteryService
@@ -119,9 +223,15 @@ public sealed class MainViewModelBatteryIsolationTests
         private readonly TaskCompletionSource<BatterySnapshot> _snapshot = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         public Task<BatterySnapshot> GetSnapshotAsync(
-            CancellationToken cancellationToken = default) =>
-            _snapshot.Task.WaitAsync(cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return _snapshot.Task.WaitAsync(cancellationToken);
+        }
 
         public void Complete(BatterySnapshot snapshot)
         {
@@ -139,6 +249,9 @@ public sealed class MainViewModelBatteryIsolationTests
         public TaskCompletionSource<HardwareSnapshot> FirstSnapshot { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public TaskCompletionSource FirstCallStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         public Task<DeviceIdentity> GetDeviceIdentityAsync(
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
@@ -152,6 +265,7 @@ public sealed class MainViewModelBatteryIsolationTests
         {
             if (Interlocked.Increment(ref _snapshotCalls) == 1)
             {
+                FirstCallStarted.TrySetResult();
                 return FirstSnapshot.Task.WaitAsync(cancellationToken);
             }
 

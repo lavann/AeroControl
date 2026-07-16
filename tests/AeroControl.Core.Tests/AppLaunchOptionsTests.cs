@@ -12,6 +12,7 @@ public sealed class AppLaunchOptionsTests
         Assert.False(options.IsDemo);
         Assert.Null(options.CapturePath);
         Assert.Equal(AppView.Cooling, options.InitialView);
+        Assert.False(options.HasExplicitView);
     }
 
     [Fact]
@@ -23,6 +24,20 @@ public sealed class AppLaunchOptionsTests
         Assert.True(options.IsDemo);
         Assert.Equal("C:\\capture.png", options.CapturePath);
         Assert.Equal(AppView.Battery, options.InitialView);
+        Assert.True(options.HasExplicitView);
+    }
+
+    [Theory]
+    [InlineData("monitor", "Monitor")]
+    [InlineData("diagnostics", "Diagnostics")]
+    [InlineData("profiles", "Profiles")]
+    [InlineData("settings", "Settings")]
+    public void Parse_ReadsAdditionalViews(string value, string expected)
+    {
+        var options = AppLaunchOptions.Parse(["--view", value]);
+
+        Assert.Equal(expected, options.InitialView.ToString());
+        Assert.True(options.HasExplicitView);
     }
 
     [Theory]

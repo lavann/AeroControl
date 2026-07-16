@@ -193,7 +193,7 @@ public sealed class BatteryServiceTests
         await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await service.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
 
-        Assert.True(provider.Canceled.Task.IsCompletedSuccessfully);
+        await provider.Canceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
         var snapshot = await snapshotTask.WaitAsync(TimeSpan.FromSeconds(1));
         Assert.True(snapshot.IsConnected);
         Assert.Contains("timed out", snapshot.ErrorMessage, StringComparison.OrdinalIgnoreCase);
@@ -227,8 +227,8 @@ public sealed class BatteryServiceTests
         public async Task<BatteryReportData?> GetReportAsync(
             CancellationToken cancellationToken = default)
         {
-            Started.TrySetResult();
             using var registration = cancellationToken.Register(() => Canceled.TrySetResult());
+            Started.TrySetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return null;
         }

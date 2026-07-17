@@ -159,7 +159,7 @@ The core library owns models, duty encoding, capability checks, and firmware seq
 - System toggles: camera, touchpad, Windows key, Wi-Fi, and Bluetooth
 - Model-validated battery charge limits
 - Performance and power profiles
-- Keyboard backlight and RGB controls through documented/model-validated interfaces
+- Keyboard backlight color controls and named color profiles through documented, model-validated interfaces
 - Artifact-signed release binaries and an opt-in updater
 - Community model packs backed by readback tests and compatibility evidence
 

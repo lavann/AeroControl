@@ -64,6 +64,21 @@ public sealed class DiagnosticsService
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         }
 
+        HardwareSnapshot snapshot;
+        try
+        {
+            snapshot = await _hardware.GetSnapshotAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            errors.Add(SanitizeFailure("Telemetry", exception));
+            snapshot = HardwareSnapshot.Unavailable(string.Empty);
+        }
+        if (!snapshot.IsConnected && !errors.Contains("Telemetry: unavailable."))
+        {
+            errors.Add("Telemetry: unavailable.");
+        }
+
         IReadOnlyList<string> conflicts;
         try
         {
@@ -76,6 +91,8 @@ public sealed class DiagnosticsService
         }
 
         return new DiagnosticsReport(
+            DiagnosticsReport.CurrentSchemaVersion,
+            true,
             DateTimeOffset.Now,
             GetApplicationVersion(),
             RuntimeInformation.OSDescription,
@@ -85,14 +102,29 @@ public sealed class DiagnosticsService
             ElevationService.IsAdministrator(),
             GetSignatureStatus(_executablePath),
             GetSha256(_executablePath),
-            identity.Manufacturer,
-            identity.Model,
-            identity.SystemSku,
-            identity.BiosVersion,
+            BoundIdentity(identity.Manufacturer),
+            BoundIdentity(identity.Model),
+            BoundIdentity(identity.SystemSku),
+            BoundIdentity(identity.BiosVersion),
             identity.IsVerifiedConfiguration,
-            capabilities.GetMethods.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-            capabilities.SetMethods.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-            conflicts,
+            new CompatibilityTelemetry(
+                snapshot.IsConnected,
+                BoundReading(snapshot.CpuTemperatureCelsius, -50, 150),
+                BoundReading(snapshot.GpuTemperatureCelsius, -50, 150),
+                BoundReading(snapshot.Fan1Rpm, 0, 10_000),
+                BoundReading(snapshot.Fan2Rpm, 0, 10_000),
+                BoundReading(snapshot.CpuFanDutyPercent, 0, 100),
+                BoundReading(snapshot.GpuFanDutyPercent, 0, 100),
+                snapshot.FanHealthGood,
+                snapshot.FanMode.ToString(),
+                BoundReading(snapshot.FixedFanPercent, 0, 100)),
+            BoundMethodNames(capabilities.GetMethods),
+            BoundMethodNames(capabilities.SetMethods),
+            conflicts
+                .Where(ConflictingProcessNames.Contains)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
             errors);
     }
 
@@ -116,6 +148,32 @@ public sealed class DiagnosticsService
         OperationCanceledException => $"{operation}: canceled.",
         _ => $"{operation}: unavailable."
     };
+
+    private static string BoundText(string value, int maximumLength) =>
+        new(value
+            .Where(character => !char.IsControl(character))
+            .Take(maximumLength)
+            .ToArray());
+
+    private static string BoundIdentity(string value)
+    {
+        var bounded = BoundText(value, DiagnosticsReport.MaximumIdentityLength);
+        return Path.IsPathFullyQualified(bounded) ? string.Empty : bounded;
+    }
+
+    private static string[] BoundMethodNames(IEnumerable<string> methodNames) => methodNames
+        .Select(methodName => BoundText(methodName, DiagnosticsReport.MaximumMethodNameLength))
+        .Where(methodName => methodName.Length > 0 &&
+            methodName.All(character => char.IsLetterOrDigit(character) || character == '_'))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .Take(DiagnosticsReport.MaximumMethodCount)
+        .ToArray();
+
+    private static int? BoundReading(int? value, int minimum, int maximum) =>
+        value.HasValue && value.Value >= minimum && value.Value <= maximum
+            ? value
+            : null;
 
     private static string GetSignatureStatus(string path)
     {

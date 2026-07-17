@@ -73,6 +73,21 @@ The fixed-mode sequence still calls both `SetFixedFanSpeed` and `SetGPUFanDuty`.
 
 ## Read-only capability collection
 
+### Community compatibility report
+
+The preferred support path is an explicit, read-only export from AeroControl:
+
+1. Close Gigabyte Control Center and other fan-control utilities.
+2. Open **Diagnostics** in AeroControl and select **Refresh**.
+3. Select **Export JSON**, then inspect the saved file before sharing it.
+4. Open a [hardware support report](https://github.com/lavann/AeroControl/issues/new?template=hardware-support.yml), attach the reviewed JSON, and complete the required method-name fields.
+
+The versioned export identifies itself with `SchemaVersion: aerocontrol.compatibility-report.v1` and `IsEvidenceOnly: true`. It contains bounded model/SKU/BIOS data, OS and AeroControl build details, executable signature/hash status, discovered firmware method names, known conflicting-process names, and bounded decoded read-only telemetry. It excludes raw WMI payloads and provider exception text in addition to serial numbers, UUIDs, MAC addresses, usernames, and raw paths.
+
+A report is compatibility evidence, not authorization to write firmware. Submission or acceptance of a report never changes the verified configuration allowlist. Maintainers must still establish exact-model semantics, bounded inputs, reversibility, controlled readback, and fake-bridge tests before adding write support.
+
+### Manual method-name fallback
+
 The following Administrator PowerShell commands list method names without invoking them:
 
 ```powershell
@@ -80,7 +95,7 @@ The following Administrator PowerShell commands list method names without invoki
 ([wmiclass]'\\.\root\WMI:GB_WMIACPI_Set').psbase.Methods.Name | Sort-Object
 ```
 
-When filing a model-support issue, include the model, SKU, BIOS version, Windows version, and method names. Remove serial numbers, UUIDs, MAC addresses, and usernames.
+If the in-app export is unavailable, include the model, SKU, BIOS version, Windows version, and method names manually. Remove serial numbers, UUIDs, MAC addresses, usernames, and raw paths.
 
 ## Support levels
 

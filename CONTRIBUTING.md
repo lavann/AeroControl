@@ -5,9 +5,17 @@ AeroControl welcomes fixes, model reports, tests, and carefully validated hardwa
 ## Before opening a change
 
 1. Search existing issues for the model and firmware method.
-2. Open a hardware-support issue before adding a new write sequence.
-3. Remove serial numbers, UUIDs, MAC addresses, Windows usernames, and other identifiers from diagnostics.
+2. Open a [hardware-support issue](https://github.com/lavann/AeroControl/issues/new?template=hardware-support.yml) before adding a new write sequence.
+3. Prefer the versioned Diagnostics JSON export and inspect it before uploading.
 4. Explain how the setting can be read back and safely reversed.
+
+## Compatibility reports
+
+In AeroControl, open **Diagnostics**, select **Refresh**, then **Export JSON**. The `aerocontrol.compatibility-report.v1` schema is bounded, sanitized, and marked `IsEvidenceOnly`; it contains no raw firmware payloads and never enables writes. Review every exported file before attaching it to an issue.
+
+If the export is unavailable, use the read-only method discovery commands in [docs/compatibility.md](docs/compatibility.md). Never invoke unknown methods to gather a report. Remove serial numbers, UUIDs, MAC addresses, Windows usernames, raw paths, secrets, and unrelated system details from all submissions.
+
+Reports are evidence for maintainers to review. They do not make a model verified, generate a model allowlist entry, or satisfy the controlled write/readback requirements below.
 
 ## Development setup
 

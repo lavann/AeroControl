@@ -33,7 +33,7 @@ Currently implemented:
 - Read-only battery charge, power-state, voltage, capacity-retention, and cycle telemetry
 - Standard Windows battery APIs only; the Battery tab performs no firmware writes and requires no elevation
 - Session-only Monitor charts with explicit CSV export
-- Sanitized Diagnostics and JSON export with no serials, UUIDs, MAC addresses, usernames, or raw paths
+- Versioned, evidence-only compatibility-report JSON with bounded read-only telemetry and no serials, UUIDs, MAC addresses, usernames, or raw paths
 - Local sustained temperature/fan-stall notifications that never change hardware settings
 - Named fan profiles reusing the existing verified fan-control path
 - Per-user settings, optional notification-area behavior, and reversible sign-in startup
@@ -52,7 +52,7 @@ Currently implemented:
 | Other Gigabyte/AORUS laptops exposing the same methods | Capability-detected at runtime | Read-only; writes disabled until exact configuration verification |
 | Systems without Gigabyte WMI ACPI classes | None | Monitoring and writes unavailable |
 
-See [docs/compatibility.md](docs/compatibility.md) for the verified duty values, observed RPMs, and safe model-reporting instructions.
+See [docs/compatibility.md](docs/compatibility.md) for the verified duty values, observed RPMs, and the versioned read-only compatibility-report workflow. Reports are evidence only and never enable firmware writes automatically.
 
 ## Windows publisher and SmartScreen status
 
@@ -167,7 +167,7 @@ A control is not added merely because a WMI method exists. New writes require mo
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing model support. Hardware reports must omit serial numbers and other identifiers. Do not submit proprietary binaries, firmware, or copied vendor code.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing model support. Use the reviewed Diagnostics JSON with the [hardware-support form](https://github.com/lavann/AeroControl/issues/new?template=hardware-support.yml); reports must omit serial numbers and other identifiers and cannot grant write support. Do not submit proprietary binaries, firmware, or copied vendor code.
 
 ## License
 

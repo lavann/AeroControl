@@ -6,7 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Do not include serial numbers, UUIDs, MAC addresses, usernames, or proprietary binaries.
+        Compatibility reports are evidence only. They never enable firmware writes or expand AeroControl's verified-model allowlist automatically.
+
+        Prefer AeroControl's Diagnostics > Refresh > Export JSON workflow. Review the file before attaching it. Do not include serial numbers, UUIDs, MAC addresses, usernames, raw paths, secrets, or proprietary binaries.
   - type: input
     id: model
     attributes:
@@ -36,10 +38,18 @@ body:
     validations:
       required: true
   - type: textarea
+    id: compatibility-report
+    attributes:
+      label: Sanitized AeroControl compatibility report
+      description: Open Diagnostics, select Refresh, export the JSON, review it, then drag the file here. If export is unavailable, explain why and complete the method-name fields below.
+      placeholder: Drag the reviewed AeroControl diagnostics JSON here, or explain why it is unavailable.
+    validations:
+      required: true
+  - type: textarea
     id: get-methods
     attributes:
       label: GB_WMIACPI_Get method names
-      description: Method names only. Use the read-only command in docs/compatibility.md.
+      description: Method names only. Copy them from the report or use the read-only command in docs/compatibility.md.
       render: text
     validations:
       required: true
@@ -47,7 +57,7 @@ body:
     id: set-methods
     attributes:
       label: GB_WMIACPI_Set method names
-      description: Method names only. Do not test unknown writes.
+      description: Method names only. Copy them from the report or use the read-only command. Do not test unknown writes.
       render: text
     validations:
       required: true
@@ -55,13 +65,15 @@ body:
     id: observations
     attributes:
       label: Read-only observations
-      description: Describe telemetry that works or fails. Do not experiment with undocumented writes.
+      description: Describe telemetry that works or fails. Do not invoke unknown methods or experiment with undocumented writes.
   - type: checkboxes
     id: privacy
     attributes:
       label: Privacy and safety
       options:
-        - label: I removed serial numbers and personal identifiers.
+        - label: I reviewed the exported file and removed any personal identifiers or unrelated data.
           required: true
         - label: I have not attached proprietary binaries, firmware, or copied vendor code.
+          required: true
+        - label: I understand that this report is evidence only and does not enable firmware writes for my model.
           required: true

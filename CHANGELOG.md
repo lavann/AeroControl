@@ -6,14 +6,16 @@ The project follows semantic versioning after the initial public preview.
 
 ## [Unreleased]
 
+### Planned
+
+- Additional model-validated device controls
+
+## [0.4.0] - 2026-07-17
+
 ### Compatibility reporting
 
 - Versioned, bounded compatibility-report JSON with an explicit evidence-only marker and sanitized read-only telemetry
 - Guided hardware-support intake for reviewed diagnostics exports and manual method-name fallback
-
-### Planned
-
-- Additional model-validated device controls
 
 ## [0.3.0] - 2026-07-16
 

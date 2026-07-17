@@ -20,7 +20,7 @@ AeroControl is a lightweight, open-source .NET desktop utility for Gigabyte AERO
 
 ## Project status
 
-Version 0.3 is a **cooling, battery, monitoring, and diagnostics preview**, not yet a complete replacement for every Gigabyte Control Center module. Cooling remains the default launch tab unless the user explicitly enables remembered navigation.
+Version 0.4 is a **cooling, battery, monitoring, diagnostics, and compatibility-reporting preview**, not yet a complete replacement for every Gigabyte Control Center module. Cooling remains the default launch tab unless the user explicitly enables remembered navigation.
 
 Currently implemented:
 

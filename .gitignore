@@ -31,3 +31,7 @@ Desktop.ini
 # Local diagnostics and settings
 *.local.json
 *.diagnostics.json
+
+# Local operator continuity
+/OPERATOR_LOG.md
+/NEXT_STEPS.md

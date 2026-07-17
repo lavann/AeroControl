@@ -6,6 +6,15 @@
 - [x] Build, format, test, publish, and debug tasks configured
 - [x] README, screenshot, architecture diagram, license, and disclaimer added
 
+## Session continuity
+
+- `OPERATOR_LOG.md` and `NEXT_STEPS.md` are intentionally ignored local handoff files.
+- At session start, first verify the current branch, HEAD, and working-tree state, then read both files when present. Treat them as orientation only; Git, current code, and fresh validation are authoritative.
+- Before building, testing, publishing, or beginning new work, fetch the configured upstream and verify whether the current branch is behind or diverged. Fast-forward only when the working tree is clean; otherwise preserve local work and resolve the state explicitly. Never validate or publish a checkout known to be stale.
+- After the final commit or upstream integration, rerun the required Release build and tests against that exact source state before pushing or publishing.
+- When the operator signals the end of the workday, append a dated outcome to `OPERATOR_LOG.md` and rewrite `NEXT_STEPS.md` with the verified branch, HEAD, working-tree state, validation results, blockers, and exact first action for the next session.
+- Keep both files local. Never force-add them or record secrets, credentials, personal device identifiers, raw diagnostics, or proprietary material in them.
+
 ## Engineering rules
 
 - Keep firmware logic in `AeroControl.Core`; WPF must depend on `IAeroHardwareService` rather than `System.Management` directly.
